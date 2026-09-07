@@ -1,0 +1,355 @@
+/* ---------------------------------------------------------------
+   Cat, Talk To Me — a warm, paper-and-lamplight palette.
+   Everything is rounded. Nothing is clinical.
+   --------------------------------------------------------------- */
+
+:root {
+  --cream: #FFF3E2;
+  --paper: #FFFAF2;
+  --paper-edge: #F0DDC4;
+  --cocoa: #3D2B1C;
+  --cocoa-soft: #6B5442;
+  --terracotta: #C96F4A;
+  --terracotta-dark: #A9522F;
+  --honey: #E8A33D;
+  --sage: #7E9470;
+  --blush: #F3D3C0;
+
+  --radius-lg: 28px;
+  --radius-md: 18px;
+  --radius-sm: 12px;
+
+  --lift: 0 2px 0 rgba(61, 43, 28, 0.06), 0 14px 30px -18px rgba(61, 43, 28, 0.5);
+  --lift-hi: 0 3px 0 rgba(61, 43, 28, 0.08), 0 22px 44px -20px rgba(61, 43, 28, 0.55);
+
+  --font: "Nunito", ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--cream);
+  color: var(--cocoa);
+  font-family: var(--font);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A soft wash of lamplight behind everything. */
+.warmth {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(58rem 40rem at 12% -8%, rgba(232, 163, 61, 0.28), transparent 62%),
+    radial-gradient(46rem 34rem at 92% 6%, rgba(201, 111, 74, 0.20), transparent 60%),
+    radial-gradient(52rem 40rem at 50% 108%, rgba(126, 148, 112, 0.16), transparent 60%);
+}
+
+.page {
+  position: relative;
+  z-index: 1;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: clamp(1.75rem, 5vw, 3.5rem) clamp(1.1rem, 4vw, 2rem) 3rem;
+}
+
+/* ------------------------------- masthead ------------------------------- */
+
+.masthead { text-align: center; margin-bottom: 2rem; }
+
+.kicker {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+  font-weight: 700;
+}
+
+h1 {
+  margin: 0 0 0.7rem;
+  font-size: clamp(2.3rem, 8vw, 3.4rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+
+h1 em {
+  font-style: italic;
+  color: var(--terracotta);
+  /* A hand-drawn underline, the way you would circle a word on paper. */
+  background: linear-gradient(transparent 68%, rgba(232, 163, 61, 0.42) 68%);
+  padding: 0 0.12em;
+}
+
+.subtitle {
+  margin: 0 auto;
+  max-width: 33rem;
+  color: var(--cocoa-soft);
+  font-size: 1.02rem;
+}
+
+/* -------------------------------- panels -------------------------------- */
+
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--paper-edge);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--lift);
+  padding: clamp(1.2rem, 4vw, 1.9rem);
+}
+
+.panel[hidden] { display: none; }
+
+/* ------------------------------- dropzone ------------------------------- */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: clamp(2.2rem, 9vw, 3.4rem) 1.25rem;
+  border: 2.5px dashed var(--blush);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(255, 243, 226, 0.7), rgba(255, 250, 242, 0.4));
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.dropzone:hover,
+.dropzone:focus-within,
+.dropzone.is-over {
+  border-color: var(--terracotta);
+  background: rgba(243, 211, 192, 0.28);
+  transform: translateY(-2px);
+}
+
+.dropzone-art { font-size: 3.1rem; line-height: 1; margin-bottom: 0.45rem; }
+.dropzone-title { font-size: 1.28rem; font-weight: 800; }
+.dropzone-hint { color: var(--cocoa-soft); font-size: 0.95rem; }
+
+.privacy {
+  margin: 1.1rem 0 0;
+  text-align: center;
+  font-size: 0.88rem;
+  color: var(--cocoa-soft);
+  line-height: 1.5;
+}
+
+/* ------------------------------- thinking ------------------------------- */
+
+.thinking { text-align: center; padding: 2.2rem 0.5rem; }
+.thinking p { margin: 0.9rem 0 0; color: var(--cocoa-soft); font-size: 1.05rem; }
+
+.paws { display: flex; justify-content: center; gap: 0.6rem; font-size: 1.7rem; }
+.paws span { animation: pad 1.25s ease-in-out infinite; opacity: 0.35; }
+.paws span:nth-child(2) { animation-delay: 0.18s; }
+.paws span:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes pad {
+  0%, 100% { opacity: 0.28; transform: translateY(0) rotate(-8deg); }
+  45%      { opacity: 1;    transform: translateY(-7px) rotate(6deg); }
+}
+
+/* -------------------------------- result -------------------------------- */
+
+.result-figure { margin: 0 0 1.3rem; }
+
+#result-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  box-shadow: var(--lift-hi);
+  background: var(--blush);
+}
+
+.reading-lead {
+  margin: 0;
+  color: var(--cocoa-soft);
+  font-size: 0.95rem;
+  font-style: italic;
+}
+
+.verdict {
+  margin: 0.1rem 0 0.5rem;
+  font-size: clamp(1.85rem, 6.5vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.blurb { margin: 0 0 1.15rem; color: var(--cocoa-soft); }
+
+/* ------------------------------ confidence ------------------------------ */
+
+.meter { margin-bottom: 1.1rem; }
+
+.meter-track {
+  height: 9px;
+  border-radius: 99px;
+  background: rgba(61, 43, 28, 0.09);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--honey), var(--terracotta));
+  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.meter-caption { margin: 0.45rem 0 0; font-size: 0.86rem; color: var(--cocoa-soft); }
+
+/* --------------------------------- why ---------------------------------- */
+
+.why {
+  border-top: 1px solid var(--paper-edge);
+  padding-top: 0.85rem;
+}
+
+.why summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--terracotta);
+  list-style: none;
+  font-size: 0.95rem;
+}
+
+.why summary::-webkit-details-marker { display: none; }
+.why summary::before { content: "✦ "; }
+
+.why ul { margin: 0.7rem 0 0.7rem; padding-left: 1.15rem; color: var(--cocoa-soft); font-size: 0.93rem; }
+.why li { margin-bottom: 0.28rem; }
+
+.cue {
+  margin: 0 0 0.7rem;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid var(--sage);
+  background: rgba(126, 148, 112, 0.09);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 0.9rem;
+  color: var(--cocoa-soft);
+}
+
+.honesty { margin: 0; font-size: 0.84rem; color: var(--cocoa-soft); opacity: 0.9; }
+
+.catcheck {
+  margin: 0.9rem 0 0;
+  font-size: 0.88rem;
+  color: var(--cocoa-soft);
+}
+.catcheck[hidden] { display: none; }
+
+/* -------------------------------- actions ------------------------------- */
+
+.actions {
+  display: flex;
+  gap: 0.65rem;
+  margin-top: 1.4rem;
+  flex-wrap: wrap;
+}
+
+.btn {
+  flex: 1 1 auto;
+  min-height: 52px;
+  padding: 0.8rem 1.3rem;
+  border-radius: 99px;
+  border: none;
+  font-family: inherit;
+  font-size: 1.02rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 130ms ease, box-shadow 130ms ease, background 130ms ease;
+}
+
+.btn:active { transform: translateY(1px) scale(0.995); }
+
+.btn-primary {
+  background: var(--terracotta);
+  color: #FFF7EC;
+  box-shadow: 0 3px 0 var(--terracotta-dark), 0 14px 26px -14px rgba(169, 82, 47, 0.9);
+}
+.btn-primary:hover { background: var(--terracotta-dark); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--cocoa-soft);
+  border: 2px solid var(--paper-edge);
+  flex: 0 1 auto;
+}
+.btn-ghost:hover { border-color: var(--terracotta); color: var(--terracotta); }
+
+.toast {
+  margin: 0.85rem 0 0;
+  min-height: 1.2rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--sage);
+  font-weight: 600;
+}
+
+/* --------------------------------- error -------------------------------- */
+
+.oops { font-size: 2.6rem; margin: 0 0 0.4rem; text-align: center; }
+#panel-error { text-align: center; }
+#panel-error p { color: var(--cocoa-soft); }
+
+/* ------------------------------- footnote ------------------------------- */
+
+.footnote {
+  margin-top: 2.2rem;
+  text-align: center;
+  font-size: 0.84rem;
+  color: var(--cocoa-soft);
+  opacity: 0.8;
+}
+.footnote p { margin: 0; }
+
+/* ------------------------------ preferences ----------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 3px solid var(--honey);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* --------------------------- spacing and access -------------------------- */
+
+/* Keep the file input reachable by keyboard, but out of the way. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Emoji sit tight against text, so give them their own gap. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45em;
+}
+
+.ico { margin-right: 0.35em; }

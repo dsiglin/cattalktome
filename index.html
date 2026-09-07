@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#FFF3E2" />
+    <title>Cat, Talk To Me</title>
+    <meta name="description" content="Upload a photo of your cat. Get a warm, honest read on how it feels, ready to share." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐈</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,600;0,800;1,400&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div class="warmth" aria-hidden="true"></div>
+
+    <main class="page">
+      <header class="masthead">
+        <p class="kicker">a small, kind thing</p>
+        <h1>Cat, <em>talk to me</em></h1>
+        <p class="subtitle">
+          Show me a photo of your cat. I will look at the light, the shadows and the
+          stillness in it, and tell you what I think they feel — so you can tell
+          everybody else.
+        </p>
+      </header>
+
+      <section class="stage" id="stage">
+        <!-- Step 1: choose a photo -->
+        <div class="panel" id="panel-pick">
+          <label class="dropzone" id="dropzone" for="file">
+            <span class="dropzone-art" aria-hidden="true">🐈‍⬛</span>
+            <span class="dropzone-title">Drop a cat here</span>
+            <span class="dropzone-hint">or tap to pick a photo</span>
+            <input type="file" id="file" accept="image/*" class="visually-hidden" />
+          </label>
+          <p class="privacy">
+            <span class="ico" aria-hidden="true">🔒</span>
+            Your photo never leaves this device. There is no server. It is just you,
+            your browser and a cat.
+          </p>
+        </div>
+
+        <!-- Step 2: thinking -->
+        <div class="panel" id="panel-thinking" hidden>
+          <div class="thinking">
+            <div class="paws" aria-hidden="true"><span>🐾</span><span>🐾</span><span>🐾</span></div>
+            <p id="thinking-line">Sitting with your cat for a moment…</p>
+          </div>
+        </div>
+
+        <!-- Step 3: the reading -->
+        <div class="panel" id="panel-result" hidden>
+          <figure class="result-figure">
+            <canvas id="result-canvas" aria-label="Your cat photo with the feeling on it"></canvas>
+          </figure>
+
+          <div class="reading">
+            <p class="reading-lead">I think your cat feels</p>
+            <h2 class="verdict"><span id="verdict-emoji" aria-hidden="true"></span> <span id="verdict-label"></span></h2>
+            <p class="blurb" id="verdict-blurb"></p>
+
+            <div class="meter" role="img" id="meter" aria-label="confidence">
+              <div class="meter-track"><div class="meter-fill" id="meter-fill"></div></div>
+              <p class="meter-caption" id="meter-caption"></p>
+            </div>
+
+            <details class="why">
+              <summary>Why I think so</summary>
+              <ul id="evidence"></ul>
+              <p class="cue" id="cue"></p>
+              <p class="honesty">
+                This is a considered guess, not a diagnosis. I measure real things in
+                your photo — light, warmth, shadow, sharpness, where the detail sits —
+                and match them to how cats actually carry those moods. A vet reads a
+                cat properly. I read a picture.
+              </p>
+            </details>
+
+            <p class="catcheck" id="catcheck" hidden></p>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-primary" id="share">
+              <span class="ico" aria-hidden="true">💌</span> <span id="share-label">Share this</span>
+            </button>
+            <button class="btn btn-ghost" id="again">Try another photo</button>
+          </div>
+          <p class="toast" id="toast" role="status" aria-live="polite"></p>
+        </div>
+
+        <!-- Error -->
+        <div class="panel" id="panel-error" hidden>
+          <p class="oops">😿</p>
+          <p id="error-text">That photo would not open. Try another one?</p>
+          <button class="btn btn-ghost" id="retry">Start again</button>
+        </div>
+      </section>
+
+      <footer class="footnote">
+        <p>Made slowly, for people who talk to their cats. No accounts, no uploads, no tracking.</p>
+      </footer>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
