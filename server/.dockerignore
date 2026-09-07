@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+tests/
+debug_output.jpg
+debug_annotate.py
