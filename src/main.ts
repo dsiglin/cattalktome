@@ -98,13 +98,22 @@ async function runCatCheck(photoOnly: HTMLCanvasElement) {
   const verdict = await verifyCat(photoOnly);
   if (!verdict) return;
 
+  const icon = document.createElement('span');
+  icon.className = 'ico';
+  icon.setAttribute('aria-hidden', 'true');
+  const words = document.createElement('span');
+
   if (verdict.isBigCat) {
-    note.textContent = `🦁\u00A0That reads as a ${verdict.label} to me. Bold choice. The feeling still stands.`;
+    icon.textContent = '\u{1F981}';
+    words.textContent = `That reads as a ${verdict.label} to me. Bold choice. The feeling still stands.`;
   } else if (verdict.isCat) {
-    note.textContent = `✅\u00A0Confirmed cat (${verdict.label}).`;
+    icon.textContent = '\u2705';
+    words.textContent = `Confirmed cat (${verdict.label}).`;
   } else {
-    note.textContent = `🤔\u00A0I am not certain that is a cat — it looks more like a ${verdict.label}. I read it anyway.`;
+    icon.textContent = '\u{1F914}';
+    words.textContent = `I am not certain that is a cat \u2014 it looks more like a ${verdict.label}. I read it anyway.`;
   }
+  note.replaceChildren(icon, words);
   note.hidden = false;
 }
 
