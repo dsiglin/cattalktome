@@ -353,3 +353,43 @@ h1 em {
 }
 
 .ico { margin-right: 0.5em; }
+
+/* -------------------------------- deeper read ---------------------------- */
+
+.deeper {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--paper-edge);
+}
+
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 0 0.4rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--terracotta);
+  cursor: pointer;
+}
+.btn-link:hover { color: var(--terracotta-dark); text-decoration: underline; }
+.btn-link:disabled { opacity: 0.6; cursor: default; text-decoration: none; }
+
+.deeper-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--cocoa-soft);
+}
+
+.deeper-status {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--sage);
+}
+.deeper-status.is-error { color: var(--terracotta-dark); }
+.deeper-status[hidden] { display: none; }

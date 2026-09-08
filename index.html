@@ -36,8 +36,9 @@
           </label>
           <p class="privacy">
             <span class="ico" aria-hidden="true">🔒</span>
-            Your photo never leaves this device. There is no server. It is just you,
-            your browser and a cat.
+            By default your photo never leaves this device — the first read happens
+            right here in your browser. An optional deeper read can upload it to a
+            small server for a closer look, but only if you ask for one.
           </p>
         </div>
 
@@ -77,6 +78,18 @@
               </p>
             </details>
 
+            <div class="deeper">
+              <button class="btn-link" id="deeper-btn" type="button">
+                <span class="ico" aria-hidden="true">🔬</span>
+                <span id="deeper-btn-label">Get a deeper read</span>
+              </button>
+              <p class="deeper-hint">
+                Uploads this photo to a small server that measures real ear, eye, and
+                muzzle shape instead of just light and shadow. Nothing is stored.
+              </p>
+              <p class="deeper-status" id="deeper-status" hidden></p>
+            </div>
+
             <p class="catcheck" id="catcheck" hidden></p>
           </div>
 
@@ -98,7 +111,9 @@
       </section>
 
       <footer class="footnote">
-        <p>Made slowly, for people who talk to their cats. No accounts, no uploads, no tracking.</p>
+        <p>Made slowly, for people who talk to their cats. No accounts, no tracking — the
+          instant read never leaves your device, and the deeper read only uploads a
+          photo when you ask for one.</p>
       </footer>
     </main>
 
