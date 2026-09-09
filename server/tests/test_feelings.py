@@ -74,17 +74,22 @@ class TestReadFeeling:
         assert good.reliable is True
 
     def test_flat_ears_and_low_head_read_as_wary_or_startled(self):
-        # ears swept back hard (steep base angle), head tilted low, tight muzzle
+        # ears swept back hard past the relaxed ~42-degree baseline, head
+        # tilted low, tight muzzle. 63/-60 mirrors a real scared cat's
+        # measured angles (a cat crouching from a dog, detected live).
         r = read_feeling(
-            geo(head_tilt_deg=22, left_ear_angle_deg=45, right_ear_angle_deg=-45,
+            geo(head_tilt_deg=22, left_ear_angle_deg=63, right_ear_angle_deg=-60,
                 muzzle_ratio=0.7, ear_splay_ratio=1.3),
             light(brightness=0.3, contrast=0.7, dark_ratio=0.5),
         )
         assert r.feeling.id in {"wary", "startled"}
 
     def test_forward_ears_and_relaxed_muzzle_read_as_calm(self):
+        # 42/-42 is the relaxed baseline this landmark scheme actually
+        # produces for an upright ear - not 0 - measured across four
+        # real calm-cat photos (42.3-44.6 degrees).
         r = read_feeling(
-            geo(left_ear_angle_deg=2, right_ear_angle_deg=-2, muzzle_ratio=1.3, ear_splay_ratio=2.3),
+            geo(left_ear_angle_deg=42, right_ear_angle_deg=-42, muzzle_ratio=1.3, ear_splay_ratio=2.3),
             light(brightness=0.7, contrast=0.15, sharpness=0.1),
         )
         assert r.feeling.id in {"sun-drunk", "content-loaf", "sleepy"}
@@ -92,7 +97,10 @@ class TestReadFeeling:
     def test_every_feeling_is_reachable(self):
         seen = set()
         axis = [0.0, 0.25, 0.5, 0.75, 1.0]
-        angles = [-45, -20, 0, 20, 45]
+        # Centered on the ~42-degree relaxed baseline (see _RELAXED_EAR_ANGLE
+        # in feelings.py), spanning well past it in both directions so
+        # genuinely flat-eared inputs are exercised too.
+        angles = [20, 35, 42, 55, 70]
         for head_tilt in [-15, 0, 15]:
             for splay in [1.2, 1.8, 2.4]:
                 for la in angles:

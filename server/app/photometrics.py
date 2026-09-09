@@ -41,9 +41,12 @@ def face_light(bgr: np.ndarray) -> FaceLight:
 
     lap = cv2.Laplacian(gray, cv2.CV_64F)
     raw_sharpness = float(np.abs(lap).mean())
-    # A checkerboard (max local contrast) produces a mean |Laplacian| of ~4;
-    # dividing by 4 normalizes, and a gain of 3 spreads real photos usefully.
-    sharpness = _clamp01((raw_sharpness / 4.0) * 3.0)
+    # Calibrated against real face-crop photographs, not a synthetic
+    # checkerboard (whose ~4.0 mean |Laplacian| no real photo ever
+    # approaches - measured across several real cat photos, raw values
+    # landed between 0.02 and 0.12; a 0.16 reference gives that range
+    # real spread instead of clustering everything near zero).
+    sharpness = _clamp01(raw_sharpness / 0.16)
 
     dark_ratio = float((gray < 0.2).mean())
 

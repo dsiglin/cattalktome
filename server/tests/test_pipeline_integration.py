@@ -54,3 +54,45 @@ def test_a_photo_with_no_cat_raises_no_cat_face_found():
     assert ok
     with pytest.raises(NoCatFaceFound):
         analyse_bytes(buf.tobytes())
+
+
+def test_sharpness_does_not_cluster_near_zero_on_a_real_photo():
+    """
+    Regression guard for a real bug: sharpness was normalized against a
+    synthetic checkerboard's mean |Laplacian| (~4.0), which no real
+    photograph ever approaches. Measured across several real cat photos,
+    raw (pre-normalization) values landed between 0.02 and 0.12 - so
+    every real photo scored sharpness under 0.1 regardless of actual
+    content. That silently starved every feeling needing real sharpness
+    variation (Locked on, Curious can never win) and let Sleepy / Fully
+    loafed win by default through their (1 - sharpness) terms, no matter
+    what the photo showed.
+
+    A synthetic checkerboard can't stand in for this test - it has far
+    more edge energy than any real photo even at a coarse tile size, so
+    it saturates the sharpness scale regardless of which calibration is
+    in use. Only a real photograph (and a genuinely blurred copy of it)
+    actually exercises the bug.
+    """
+    import cv2
+    from app.photometrics import face_light
+
+    bgr = cv2.imread(str(FIXTURE))
+    result = analyse_bytes(FIXTURE.read_bytes())
+    x, y, w, h = result.face.box
+    crop = bgr[y:y + h, x:x + w]
+
+    sharp = face_light(crop)
+    assert sharp.sharpness > 0.3, (
+        f"sharpness={sharp.sharpness} - a real, in-focus photo should land "
+        "with real headroom above zero, not clustered near it the way every "
+        "real photo did under the old checkerboard-normalized calibration"
+    )
+
+    blurred = cv2.GaussianBlur(crop, (15, 15), 0)
+    soft = face_light(blurred)
+    assert sharp.sharpness - soft.sharpness > 0.15, (
+        "a clearly blurred version of the same photo should read "
+        "meaningfully softer - the old calibration crushed both into "
+        "~0.01-0.09, a gap too small to tell apart in practice"
+    )
