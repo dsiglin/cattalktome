@@ -1,16 +1,15 @@
 """
-End to end: photo bytes -> detected cat face -> geometry + photometrics
+End to end: photo bytes -> detected cat face -> geometry + eye signals
 -> a feeling reading. Everything downstream of detect_cat_face is pure
 and unit-tested; this module just wires it together.
 """
 from dataclasses import dataclass
-from typing import List
 import numpy as np
 import cv2
 
-from .detect import detect_cat_face, DetectedFace, NoCatFaceFound
+from .detect import detect_cat_face, DetectedFace
+from .eyes import eye_signals, EyeSignals
 from .geometry import landmarks_from_points, face_geometry, FaceGeometry
-from .photometrics import face_light, FaceLight
 from .feelings import read_feeling, Reading
 
 
@@ -18,7 +17,7 @@ from .feelings import read_feeling, Reading
 class AnalysisResult:
     reading: Reading
     geometry: FaceGeometry
-    light: FaceLight
+    eyes: EyeSignals
     face: DetectedFace
 
 
@@ -32,12 +31,8 @@ def analyse_bytes(image_bytes: bytes) -> AnalysisResult:
 
 def analyse_image(bgr: np.ndarray) -> AnalysisResult:
     face = detect_cat_face(bgr)
-    x, y, w, h = face.box
-    crop = bgr[max(0, y):y + h, max(0, x):x + w]
-
     lm = landmarks_from_points(face.landmarks)
     geometry = face_geometry(lm)
-    light = face_light(crop)
-    reading = read_feeling(geometry, light)
-
-    return AnalysisResult(reading=reading, geometry=geometry, light=light, face=face)
+    eyes = eye_signals(bgr, lm, geometry.interocular_dist)
+    reading = read_feeling(geometry, eyes, face_reliable=face.reliable)
+    return AnalysisResult(reading=reading, geometry=geometry, eyes=eyes, face=face)

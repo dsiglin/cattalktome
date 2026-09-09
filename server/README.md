@@ -3,97 +3,106 @@
 A small FastAPI service that reads a cat's actual face geometry, not the
 whole photo. Built and verified locally; not yet deployed.
 
-## What this fixes
+## What this reads, and what it refuses to read
 
-The browser app measures brightness/contrast/sharpness across the *whole
-photo* — sofa, wallpaper, and cat included. Research turned up a real,
-if old and narrow, tool for doing better: **pycatfd**, an 8-point cat
-facial landmark detector (dlib), paired here with **OpenCV's cat-face
-Haar cascade** for detection. This service crops to the cat's actual face
-first, then measures real geometry (ear-base angle, head tilt, muzzle
-ratio) on top of the same honest photometrics — so every measurement is
-about the cat, not the room.
+The service finds the cat's face, places 8 landmarks on it, and measures
+four things about **the face only**:
 
-## What it still cannot do
+| Signal | Measured how | Module |
+|---|---|---|
+| Pupil dilation | Dark fraction inside a disc around each eye landmark, averaged | `app/eyes.py` |
+| Ear spread | Distance between the ear tips over the interocular distance | `app/geometry.py` |
+| Muzzle shape | Nose-to-chin distance over the interocular distance | `app/geometry.py` |
+| Head tilt | Angle of the line between the eyes | `app/geometry.py` |
 
-This is a genuinely better proxy, not a validated emotion reader. Be
-plain with users about both:
+Nothing about the room is an input. Brightness, contrast, and sharpness
+were removed after a real photo proved they contaminate the reading: an
+alert, wide-eyed cat on a windowsill read as **Unimpressed 74%** because
+the window light and a soft focus outvoted its face. The same photo now
+reads **Curious**, with the evidence "The pupils are wide open."
 
-- **No whisker point exists** in this 8-point scheme (or in any released
-  cat landmark scheme found in research). Whisker change is one of the
-  Feline Grimace Scale's five action units — it is permanently out of
-  reach here.
-- **Ear "position" here is base-angle in the image plane only** — not
-  rotation toward or away from the camera. Treat `left_ear_angle_deg`/
-  `right_ear_angle_deg` as a coarse stand-in, documented in
-  `app/geometry.py`.
-- **The training data is the 2008 Zhang et al. cat dataset**, known to
-  have lost most of its original images and some bad landmark points.
-  It was never validated against any pain or emotion scale — it just
-  finds where facial points are, not what they mean.
-- **pycatfd has no declared license** (confirmed via GitHub's license
-  API — `null`). Fine for this local proof of concept; do not ship this
-  publicly without contacting the author or replacing it.
+Ear *angle* was also removed. In this 8-point scheme a relaxed ear
+measures ~42 degrees by construction (its two points sit at different
+heights on the ear outline). That is a property of the landmark
+convention, not the cat, and it produced "ears swept back" on cats whose
+ears were plainly up.
 
-## Two calibration bugs found after shipping, and what fixed them
+### The five feelings the face can support
 
-Both had the same shape: a feature that looked like it should vary with
-real content, normalized against a reference point no real photo ever
-produces, so it barely varied at all.
+| Feeling | Pupils | Ears | Muzzle | Head |
+|---|---|---|---|---|
+| Curious | wide | out | loose | tilted |
+| Locked on | wide | out | tight | level |
+| Startled | wide | pulled in | tight | tilted |
+| Wary | (any) | pulled in | tight | tilted |
+| Unimpressed | narrow | out | loose | level |
 
-**Sharpness** was normalized against a synthetic checkerboard's mean
-|Laplacian| (~4.0). Measured across several real cat photos, raw values
-landed between 0.02 and 0.12 — every real photo scored sharpness under
-0.1 regardless of content. That made Locked-on and Curious unreachable
-in practice (they need real sharpness variation to win) and let Sleepy /
-Fully loafed win by default through their `(1 - sharpness)` terms.
-Recalibrated against real face-crop photographs (a 0.16 reference); also
-cut every formula's sharpness weight roughly in half, since it's an
-honest but weak proxy for stillness — mostly reflecting camera/focus
-quality, not the cat.
+Pupils carry the most weight (4 of ~8 units). When the pupils cannot be
+read - face too small, or a retinal glow blowing out the eye - `eyes.py`
+says so, the pupil term drops out of every formula, and the evidence
+reads "I could not read the pupils." Wary needs no pupil term, so a
+frightened cat with glowing eyes still lands in the fear family.
 
-**Ear-base angle** was measured from zero degrees, but a relaxed,
-upright ear in this 8-point scheme measures ~42 degrees by construction
-(its two landmark points sit at different heights on the ear's outline —
-a property of the landmark convention, not the cat's mood). Every calm
-photo already read as 68-87% of the way to "ears pinned back." Recentered
-on the empirically measured ~42-degree baseline instead of 0 — verified
-against a real photo of a cat crouching from a dog (55° average,
-correctly read as Wary).
+### Honest limits
 
-Both fixes are grounded in real photos, not just synthetic test fixtures
-— see `tests/test_pipeline_integration.py`'s
-`test_sharpness_does_not_cluster_near_zero_on_a_real_photo`, which
-guards the sharpness fix specifically using the repo's real fixture plus
-a genuinely blurred copy of it. A synthetic checkerboard can't stand in
-for that test: it has far more edge energy than any real photo even at
-a coarse tile size, so it saturates the sharpness scale regardless of
-which calibration is in use.
+- **Pupils respond to ambient light as well as arousal.** The pupil term
+  is about the cat's eye, not the room, but a cat in a dark room has wide
+  pupils for optical reasons. The app discloses this.
+- **Body posture is out of reach.** Tail, crouch, and piloerection are
+  the strongest emotion cues cats give, and no permissively licensed
+  cat-pose model exists (YOLO-family models are AGPL, DeepLabCut is
+  academic-only). Research documented in the session; the closest
+  future step is opencv_zoo's NanoDet (Apache-2.0, 3.6 MB) as a
+  whole-cat first stage.
+- **No whisker point exists** in the 8-point scheme. Whisker change is
+  one of the Feline Grimace Scale's five action units.
+- **The training data is the 2008 Zhang et al. cat dataset**, never
+  validated against any emotion scale. It finds where points are, not
+  what they mean. No emotion-tagged corpus was used for training; the
+  ones that exist are small, self-labelled, and would teach the model
+  the labeller's guesses.
+- **pycatfd has no declared license** (GitHub's license API returns
+  `null`). Documented caveat for a personal project.
 
-**Update:** this predicted problem became a real user report - "last
-two images it didn't find cat face." The Haar cascade's thresholds
-(`scaleFactor`/`minNeighbors` in `detect.py`) were loosened, recovering
-6/9 → 8/9 real test photos (profile angles, mid-hiss open mouths, and
-mid-turn heads now detect; ~70ms slower per request, zero new false
-positives on blank/noise checks). One case remains genuinely
-undetected: a cat with ears pinned flat against the skull, not just
-swept back - see `test_detects_a_defensive_off_angle_cat_...` in
-`tests/test_pipeline_integration.py` for the regression fixture and
-the full measurement.
+## The staged detector
+
+Detection quality is the real bottleneck. A single loosened Haar pass
+recovered profile shots but, on the windowsill cat, found the cat's
+**eye**, fitted a whole face inside a 90-pixel box, and reported it
+confidently. `app/detect.py` now runs three stages and stops at the
+first hit:
+
+| Stage | `detector` value | `reliable` | What it does |
+|---|---|---|---|
+| 1 strict | `haar` | true | Extended cascade, `scaleFactor=1.05`, `minNeighbors=3`, `minSize=75` |
+| 2 rotated | `haar-rotated` | true | Both cascades at ±20° and ±35°; boxes mapped back, clustered by IoU ≥ 0.3, need ≥ 2 votes; winner by (votes, area); median box |
+| 3 loose | `haar-loose` | **false** | Extended cascade at `1.02`/`2`. The reading hedges: `reliable=false` |
+
+Results on the three fixtures in `test/fixtures/`:
+
+| Fixture | Stage | Box | Reading |
+|---|---|---|---|
+| `cat.jpg` (lounging) | `haar` | (784, 215, 158×158) | Unimpressed - narrow pupils, level head |
+| `alert-tabby-windowsill.png` (user's cat) | `haar-rotated` | (365, 152, 326×328) | Curious - pupils 0.63, ears out |
+| `angry-sphynx.jpg` (defensive, profile) | `haar-loose` | (183, 118, 109×109) | Locked on, flagged unreliable |
+
+Across 11 real photos measured during development: 7 resolve at stage 1
+with IoU ≥ 0.98 against the strict box, 1 at stage 2, 2 extreme poses at
+stage 3 flagged unreliable, 1 honest "no cat face found."
 
 ## Architecture
 
 | Module | Responsibility | Tested how |
 |---|---|---|
-| `app/geometry.py` | Pure math: 8 landmarks → head tilt, ear angles, muzzle ratio, symmetry | 15 unit tests on synthetic coordinates |
-| `app/photometrics.py` | Brightness/contrast/sharpness on the face crop only | 6 unit tests on synthetic images |
-| `app/feelings.py` | Maps geometry + photometrics → one of 10 feelings (same catalogue as the browser app) | 12 unit tests, reachability-checked |
-| `app/detect.py` | OpenCV Haar cascade (primary) → pycatfd FHOG detector (fallback) → dlib shape predictor | exercised by the integration test |
-| `app/pipeline.py` | Wires the above together | 4 integration tests against the real cat fixture |
+| `app/detect.py` | Staged Haar detection (strict → rotated+voted → loose) → dlib shape predictor | 8 integration tests on 3 real fixtures |
+| `app/geometry.py` | Pure math: 8 landmarks → head tilt, ear spread, muzzle ratio, symmetry | 15 unit tests on synthetic coordinates |
+| `app/eyes.py` | Pupil dilation from the eye landmarks; declares itself unusable rather than guess | 6 unit tests on synthetic eyes |
+| `app/feelings.py` | Maps geometry + eyes → one of 5 feelings, with face-only evidence | 15 unit tests, reachability-checked, banned-word check on evidence |
+| `app/pipeline.py` | Wires the above together | integration tests above |
 | `app/guard.py` | Per-IP sliding-window limit + global daily cap | 7 unit tests with an injected fake clock |
 | `app/main.py` | FastAPI endpoint, CORS, upload validation, guard wiring | tested live via curl, see below |
 
-45 tests total, all passing. Run them:
+51 tests total, all passing. Run them:
 
 ```bash
 cd server
@@ -101,20 +110,16 @@ source .venv/bin/activate
 python -m pytest tests/ -q
 ```
 
-## Proof it works — real cat photo
+## Proof it works - real cat photo
 
 ```bash
 curl -X POST http://127.0.0.1:8080/analyze \
-  -F "photo=@../test/fixtures/cat.jpg;type=image/jpeg"
+  -F "photo=@../test/fixtures/alert-tabby-windowsill.png;type=image/png"
 ```
 
-Verified result on the repo's real fixture: face detected at
-`(784, 215, 159×159)` via the Haar cascade, all 8 landmarks landing
-correctly on eyes/nose/chin/ears (see `debug_annotate.py` — run it to
-regenerate `debug_output.jpg`, a visual overlay). Reading (after the
-calibration fixes below): **Demanding** (confidence 0.58, runner-up
-"Unimpressed") — a plausible read of a cat holding a level, symmetric,
-direct gaze at the camera.
+The response carries the feeling, the evidence, `detector`, `reliable`,
+the `face_box`, and the raw `geometry` and `eyes` measurements so a
+wrong reading can be traced to the number that caused it.
 
 ## The abuse guard
 

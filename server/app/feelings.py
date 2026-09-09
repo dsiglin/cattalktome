@@ -1,23 +1,44 @@
 """
-Maps real cat-face geometry plus face-crop photometrics onto a feeling.
+Maps what can actually be measured on a cat's face onto a feeling.
 
-This is a considered guess, not a diagnosis. It reuses the sticker
-catalogue from the browser app (feelings.ts) so labels match across the
-instant, on-device read and this deeper, server-side read - but the
-inputs here are real facial geometry (ear-base angle, head tilt, muzzle
-ratio) instead of whole-photo brightness/contrast, which is a genuine
-improvement: the signal now comes from the cat's face, not the room.
+Everything here is about the cat - pupil dilation, how far apart the ears
+sit, how tucked the muzzle is, how level the head is. Nothing about the
+room: no brightness, no contrast, no photo sharpness. Those used to be in
+the formulas and they produced confident nonsense (an alert, wide-eyed
+cat called "Unimpressed" at 74% because the contrast happened to land on
+a sweet spot). They are gone.
 
-Still honest about its limits: an 8-point landmark scheme has no whisker
-point, so whisker change (one of the Feline Grimace Scale's five action
-units) can never be measured this way. See geometry.py's docstrings for
-the exact FGS mapping and its caveats.
+Removing them had an honest consequence. Five of the old ten feelings -
+Sun-drunk, Sleepy, Fully loafed, Demanding, Plotting - were being told
+apart *only* by light and sharpness. With those gone, nothing measurable
+separates them, so they are gone too. Five remain, each pinned to real
+measurements:
+
+    Curious     wide pupils, ears spread, muzzle relaxed
+    Locked on   wide pupils, ears spread, muzzle tight, head level
+    Startled    wide pupils, ears pulled in, muzzle tight
+    Wary        ears pulled in, muzzle tight, head tilted or low
+    Unimpressed narrow pupils, ears spread, muzzle relaxed, head level
+
+Ear *base angle* (the old "ears swept back" signal) is not used anywhere.
+Across 10 real photos with correctly detected faces it varied with camera
+angle and landmark placement, not with the cat, and it was the source of
+a visibly false "ears swept back" line on a cat whose ears were straight
+up. Ear *spread* (outer-ear span over interocular distance) does track
+the real cue: a frightened cat with ears pinned read 1.39 against
+1.8-2.4 for everything else.
+
+Still a considered guess, not a diagnosis. And still blind to two things
+that matter: eye aperture (a half-closed, sleepy eye is unmeasurable
+without eyelid points) and mouth (open-mouth detection was tried and
+fooled by pink fur). Body posture would need a pose model this service
+does not have.
 """
 from dataclasses import dataclass
-from typing import Callable, List
+from typing import Callable, List, Optional
 
+from .eyes import EyeSignals
 from .geometry import FaceGeometry
-from .photometrics import FaceLight
 
 
 def _clamp01(x: float) -> float:
@@ -28,17 +49,49 @@ def _clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
 
 
-def _near(value: float, target: float, tolerance: float) -> float:
-    return pow(2.718281828, -(((value - target) / tolerance) ** 2))
-
-
 def _blend(*terms: tuple) -> float:
     total = 0.0
     weight = 0.0
     for w, v in terms:
+        if v is None:  # a signal that could not be measured on this photo
+            continue
         total += w * _clamp01(v)
         weight += w
     return 0.0 if weight == 0 else total / weight
+
+
+# --- derived cues, each 0..1, each named for the real thing it stands in for ---
+
+def _arousal(e: EyeSignals) -> Optional[float]:
+    """Pupil dilation stretched over the range seen on real photos:
+    0.20 dark-fraction (calm, slit pupils) -> 0, 0.60 (wide) -> 1.
+    None when the eyes could not be measured."""
+    if not e.usable:
+        return None
+    return _clamp01((e.pupil_dilation - 0.20) / 0.40)
+
+
+def _pinned_ears(g: FaceGeometry) -> float:
+    """Ear spread pulled in toward the head. 2.0+ interocular widths -> 0
+    (ears out, relaxed or alert); 1.3 -> 1 (pinned). A frightened cat
+    measured 1.39; calm and alert cats 1.8-2.4."""
+    return _clamp01((2.0 - g.ear_splay_ratio) / 0.7)
+
+
+def _tense_muzzle(g: FaceGeometry) -> float:
+    """Chin drawn up toward the eyes. 1.15+ -> 0 (relaxed, open face);
+    0.70 -> 1 (tucked). A crouching, frightened cat measured 0.72."""
+    return _clamp01((1.15 - g.muzzle_ratio) / 0.45)
+
+
+def _tilted_head(g: FaceGeometry) -> float:
+    """Head off level. Up to 5 degrees reads as level (0); 20 -> 1.
+    The frightened cat measured 17 degrees; everything else under 8."""
+    return _clamp01((abs(g.head_tilt_deg) - 5.0) / 15.0)
+
+
+def _inv(x: Optional[float]) -> Optional[float]:
+    return None if x is None else 1.0 - x
 
 
 @dataclass(frozen=True)
@@ -48,122 +101,46 @@ class Feeling:
     emoji: str
     blurb: str
     cue: str
-    score: Callable[[FaceGeometry, FaceLight], float]
-
-
-_RELAXED_EAR_ANGLE = 42.0
-"""The base-angle a relaxed, upright ear reads as in this landmark scheme -
-not zero. The two ear-base points sit at different heights on a normally
-shaped ear's outline (outer-lower corner, inner-upper corner), so even a
-fully relaxed ear produces a diagonal ~40-45 degree line; that's the
-landmark convention, not the cat's mood. Measured across four unrelated
-real photos of calm cats (42.3-44.6 degrees on the more reliable side).
-Recentering here - instead of on 0 degrees - is what lets this feature
-actually separate "relaxed" from "flattened," rather than reading every
-calm cat as already most of the way to "ears back.\""""
-
-_EAR_ANGLE_SPREAD = 15.0
-"""How many degrees past the relaxed baseline reads as fully flat. Set
-from one real contrasting data point - a cat crouching from a dog, which
-measured 50-63 degrees - so treat the exact value as a first calibration,
-not a precise measurement."""
-
-
-def _flat_ears(g: FaceGeometry) -> float:
-    """0..1: how far the ears' base angle has swept back from the relaxed
-    baseline. Larger deviation -> flatter/back-swept -> higher score."""
-    avg = (abs(g.left_ear_angle_deg) + abs(g.right_ear_angle_deg)) / 2
-    return _clamp01((avg - _RELAXED_EAR_ANGLE) / _EAR_ANGLE_SPREAD)
-
-
-def _forward_ears(g: FaceGeometry) -> float:
-    return 1.0 - _flat_ears(g)
-
-
-def _tight_muzzle(g: FaceGeometry) -> float:
-    """0..1: how drawn-back the muzzle reads. Lower ratio -> tighter."""
-    return _clamp01((1.15 - g.muzzle_ratio) / 0.6)
-
-
-def _relaxed_muzzle(g: FaceGeometry) -> float:
-    return 1.0 - _tight_muzzle(g)
-
-
-def _low_head(g: FaceGeometry) -> float:
-    return _clamp01(abs(g.head_tilt_deg) / 25.0)
-
-
-def _wide_splay(g: FaceGeometry) -> float:
-    return _clamp01((g.ear_splay_ratio - 1.2) / 1.4)
+    score: Callable[[FaceGeometry, EyeSignals], float]
 
 
 FEELINGS: List[Feeling] = [
     Feeling(
-        id="sun-drunk", label="Sun-drunk", emoji="\U0001F31E",
-        blurb="Warm, soft light, ears forward, muzzle loose. This is a cat melting into a sunbeam.",
-        cue="Relaxed cats in warm light hold their ears neutral, muzzle loose, and pupils narrow.",
-        score=lambda g, p: _blend((3, p.brightness), (2, 1 - p.contrast), (1, 1 - p.sharpness), (2, _forward_ears(g))),
-    ),
-    Feeling(
-        id="sleepy", label="Sleepy", emoji="\U0001F634",
-        blurb="Low light, soft edges, ears at ease. This is the slow-blink end of the day.",
-        cue="A drowsy cat softens its edges, half-closes its eyes, and stops tracking the room.",
-        score=lambda g, p: _blend((1.5, 1 - p.sharpness), (2, 1 - p.contrast), (2, _near(p.brightness, 0.32, 0.35)), (1.5, _forward_ears(g))),
+        id="curious", label="Curious", emoji="\U0001F440",
+        blurb="Wide pupils, ears out, face loose. This cat wants to know what that was.",
+        cue="Curiosity opens the pupils, pushes the ears out and forward, and leaves the mouth soft.",
+        score=lambda g, e: _blend((4, _arousal(e)), (1.5, 1 - _pinned_ears(g)), (1.5, 1 - _tense_muzzle(g)), (1, _tilted_head(g))),
     ),
     Feeling(
         id="locked-on", label="Locked on", emoji="\U0001F3AF",
-        blurb="Ears forward and level, head steady, sharp focus. Something has this cat's full attention.",
-        cue="A hunting cat fixes its head, points its ears and whiskers forward, and stops moving.",
-        score=lambda g, p: _blend((1.5, p.sharpness), (2.5, _forward_ears(g)), (2, 1 - _low_head(g)), (1.5, p.contrast)),
-    ),
-    Feeling(
-        id="curious", label="Curious", emoji="\U0001F440",
-        blurb="Wide-set ears, bright and crisp. This cat wants to know what that was.",
-        cue="Curiosity pushes the ears and whiskers forward and opens the eyes wide.",
-        score=lambda g, p: _blend((1.5, p.sharpness), (2, p.brightness), (2, _wide_splay(g)), (2, _forward_ears(g))),
+        blurb="Wide pupils, ears out, mouth set, head dead level. Something has this cat's full attention.",
+        cue="A hunting cat fixes its head, opens its pupils, points its ears, and closes its mouth tight.",
+        score=lambda g, e: _blend((4, _arousal(e)), (1.5, 1 - _pinned_ears(g)), (1.5, _tense_muzzle(g)), (1, 1 - _tilted_head(g))),
     ),
     Feeling(
         id="startled", label="Startled", emoji="\U0001F633",
-        blurb="Hard light, ears swept back suddenly. Something just happened.",
-        cue="A startled cat dilates its pupils fully and flattens its ears in one motion.",
-        score=lambda g, p: _blend((2.5, p.dark_ratio), (2.5, p.contrast), (2.5, _flat_ears(g)), (0.75, p.sharpness)),
+        blurb="Pupils blown wide, ears pulled in, face tight. Something just happened.",
+        cue="A startled cat dilates its pupils fully and pulls its ears in and back in one motion.",
+        score=lambda g, e: _blend((4, _arousal(e)), (2.5, _pinned_ears(g)), (2, _tense_muzzle(g)), (1, _tilted_head(g))),
     ),
     Feeling(
         id="wary", label="Wary", emoji="\U0001FAE3",
-        blurb="Dim, ears back, muzzle tight, head held low. This cat is keeping an exit in view.",
-        cue="A wary cat holds still in shade, turns its ears back, tightens its muzzle, and watches the room.",
-        score=lambda g, p: _blend((3, 1 - p.brightness), (2.5, _flat_ears(g)), (2, _tight_muzzle(g)), (1.5, _low_head(g))),
-    ),
-    Feeling(
-        id="demanding", label="Demanding", emoji="\U0001F37D️",
-        blurb="Head level, ears forward, filling the frame. This is a request, not a pose.",
-        cue="A cat asking for something walks straight at you, ears forward, and holds eye contact.",
-        score=lambda g, p: _blend((3, g.nose_symmetry), (2.5, _forward_ears(g)), (2, _near(p.brightness, 0.6, 0.35)), (0.5, p.sharpness)),
-    ),
-    Feeling(
-        id="content-loaf", label="Fully loafed", emoji="\U0001F35E",
-        blurb="Soft light, ears relaxed, muzzle loose. Paws tucked, nothing owed to anyone.",
-        cue="A cat that tucks its paws under itself feels safe enough to stop being ready.",
-        score=lambda g, p: _blend((3, 1 - p.contrast), (1, 1 - p.sharpness), (2.5, _relaxed_muzzle(g)), (1.5, _forward_ears(g))),
+        blurb="Ears pulled in, muzzle tight, head held low. This cat is keeping an exit in view.",
+        cue="A wary cat draws its ears in, tightens its muzzle, and drops or tilts its head to watch.",
+        score=lambda g, e: _blend((2.5, _pinned_ears(g)), (2, _tense_muzzle(g)), (2, _tilted_head(g))),
     ),
     Feeling(
         id="unimpressed", label="Unimpressed", emoji="\U0001F611",
-        blurb="Head level, ears upright, face still. This cat has considered you and moved on.",
-        cue="A neutral cat holds its ears upright and its face still. That stillness is the message.",
-        score=lambda g, p: _blend((3, 1 - _low_head(g)), (2, _near(p.contrast, 0.5, 0.35)), (1, _near(p.sharpness, 0.45, 0.35)), (1.5, g.nose_symmetry)),
-    ),
-    Feeling(
-        id="mischief", label="Plotting something", emoji="\U0001F63C",
-        blurb="Crisp, ears wide and forward, muzzle tight with focus. The decision is already made.",
-        cue="Before a pounce a cat lowers its body, widens its ear stance, and locks its gaze.",
-        score=lambda g, p: _blend((1.25, p.sharpness), (2, _wide_splay(g)), (2, _tight_muzzle(g)), (2, _forward_ears(g))),
+        blurb="Narrow pupils, ears out, face loose, head level. This cat has considered you and moved on.",
+        cue="A settled cat keeps its pupils narrow, its ears out, its mouth soft, and its head level.",
+        score=lambda g, e: _blend((4, _inv(_arousal(e))), (1.5, 1 - _pinned_ears(g)), (1.5, 1 - _tense_muzzle(g)), (1, 1 - _tilted_head(g))),
     ),
 ]
 
-_RELIABILITY_FLOOR = 0.55
-"""Below this nose-symmetry score, the detected face is likely a profile
-or a poor crop, and the reading is flagged as unreliable rather than hidden -
-the app should still show something, but say plainly that this one is shaky."""
+_SYMMETRY_FLOOR = 0.55
+"""Below this nose-symmetry score the face is likely a profile or a poor
+crop. The reading is flagged rather than hidden - the app should still show
+something, but say plainly that this one is shaky."""
 
 
 @dataclass(frozen=True)
@@ -175,39 +152,43 @@ class Reading:
     reliable: bool
 
 
-def _evidence(g: FaceGeometry, p: FaceLight) -> List[str]:
+def _evidence(g: FaceGeometry, e: EyeSignals) -> List[str]:
+    """Plain statements about the cat's face only. Every line is something
+    that was measured on the cat, never on the room."""
     lines = []
-    if p.brightness > 0.65:
-        lines.append("The light on the face is bright.")
-    elif p.brightness < 0.35:
-        lines.append("The light on the face is low.")
+
+    if e.usable:
+        a = _arousal(e)
+        if a >= 0.7:
+            lines.append("The pupils are wide open.")
+        elif a <= 0.25:
+            lines.append("The pupils are narrow.")
+        else:
+            lines.append("The pupils are partway open.")
     else:
-        lines.append("The light on the face is even.")
+        lines.append("I could not read the pupils in this photo.")
 
-    if _flat_ears(g) > 0.35:
-        lines.append("The ears read swept back, not upright.")
+    if _pinned_ears(g) > 0.5:
+        lines.append("The ears are pulled in toward the head.")
     else:
-        lines.append("The ears read upright and forward.")
+        lines.append("The ears sit out wide.")
 
-    if g.muzzle_ratio < 0.85:
-        lines.append("The muzzle reads drawn back and tight.")
-    elif g.muzzle_ratio > 1.15:
-        lines.append("The muzzle reads open and relaxed.")
+    if _tense_muzzle(g) > 0.5:
+        lines.append("The muzzle reads drawn up and tight.")
+    elif _tense_muzzle(g) < 0.15:
+        lines.append("The muzzle reads loose and open.")
 
-    if abs(g.head_tilt_deg) > 15:
-        lines.append("The head is tilted rather than level.")
-
-    if p.sharpness > 0.5:
-        lines.append("The face is in crisp focus, so the cat held still.")
-    elif p.sharpness < 0.2:
-        lines.append("The face is soft-edged, so the cat was relaxed or moving.")
+    if _tilted_head(g) > 0.5:
+        lines.append("The head is tilted or held low, not level.")
+    else:
+        lines.append("The head is level.")
 
     return lines
 
 
-def read_feeling(g: FaceGeometry, p: FaceLight) -> Reading:
+def read_feeling(g: FaceGeometry, e: EyeSignals, face_reliable: bool = True) -> Reading:
     ranked = sorted(
-        ((f, f.score(g, p)) for f in FEELINGS),
+        ((f, f.score(g, e)) for f in FEELINGS),
         key=lambda pair: (-pair[1], FEELINGS.index(pair[0])),
     )
     margin = ranked[0][1] - ranked[1][1]
@@ -217,6 +198,6 @@ def read_feeling(g: FaceGeometry, p: FaceLight) -> Reading:
         feeling=ranked[0][0],
         runner_up=ranked[1][0],
         confidence=confidence,
-        evidence=_evidence(g, p),
-        reliable=g.nose_symmetry >= _RELIABILITY_FLOOR,
+        evidence=_evidence(g, e),
+        reliable=face_reliable and g.nose_symmetry >= _SYMMETRY_FLOOR,
     )

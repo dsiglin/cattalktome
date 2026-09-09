@@ -66,7 +66,7 @@ async def analyze(request: Request, photo: UploadFile = File(...)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    g, p, r = result.geometry, result.light, result.reading
+    g, e, r = result.geometry, result.eyes, result.reading
     return JSONResponse({
         "feeling": {"id": r.feeling.id, "label": r.feeling.label, "emoji": r.feeling.emoji,
                     "blurb": r.feeling.blurb, "cue": r.feeling.cue},
@@ -76,12 +76,16 @@ async def analyze(request: Request, photo: UploadFile = File(...)):
         "evidence": r.evidence,
         "face_box": list(result.face.box),
         "detector": result.face.detector,
+        # Diagnostics: the measurements the reading was built from. All of
+        # these are about the cat's face; none are about the room's light.
         "geometry": {
             "head_tilt_deg": round(g.head_tilt_deg, 2),
             "ear_splay_ratio": round(g.ear_splay_ratio, 2),
-            "left_ear_angle_deg": round(g.left_ear_angle_deg, 2),
-            "right_ear_angle_deg": round(g.right_ear_angle_deg, 2),
             "muzzle_ratio": round(g.muzzle_ratio, 2),
             "nose_symmetry": round(g.nose_symmetry, 2),
+        },
+        "eyes": {
+            "pupil_dilation": round(e.pupil_dilation, 2),
+            "usable": e.usable,
         },
     })
