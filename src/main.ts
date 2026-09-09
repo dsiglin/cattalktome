@@ -123,7 +123,7 @@ async function stampBonusSticker(ctx: CanvasRenderingContext2D, feelingId: strin
 }
 
 const ERROR_COPY: Record<string, string> = {
-  'no-cat': "I could not find a cat's face in that photo. Try one where the face is clearer?",
+  'no-cat': "I could not find a cat's face in that photo. I need the face turned mostly toward the camera - a side profile hides the eyes and ears I read. Try one where the cat is looking at you?",
   'rate-limited': 'This little server has a visitor limit and it has been reached for now - try again a bit later.',
   'too-large': 'That photo is too large to send. Try a smaller one?',
   'bad-image': 'That file does not look like a picture the reader can open.',
