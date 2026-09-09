@@ -70,11 +70,16 @@ for that test: it has far more edge energy than any real photo even at
 a coarse tile size, so it saturates the sharpness scale regardless of
 which calibration is in use.
 
-**Still open:** face detection itself failed on the two most extreme
-real "flattened ears" photos tried during this investigation (a
-profile shot and a close-up hiss) — the detector may be systematically
-worse on exactly the alarmed poses this app most wants to catch. Not
-investigated further yet.
+**Update:** this predicted problem became a real user report - "last
+two images it didn't find cat face." The Haar cascade's thresholds
+(`scaleFactor`/`minNeighbors` in `detect.py`) were loosened, recovering
+6/9 → 8/9 real test photos (profile angles, mid-hiss open mouths, and
+mid-turn heads now detect; ~70ms slower per request, zero new false
+positives on blank/noise checks). One case remains genuinely
+undetected: a cat with ears pinned flat against the skull, not just
+swept back - see `test_detects_a_defensive_off_angle_cat_...` in
+`tests/test_pipeline_integration.py` for the regression fixture and
+the full measurement.
 
 ## Architecture
 
