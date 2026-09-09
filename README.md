@@ -4,27 +4,25 @@ Upload a photo of your cat. The app tells you what it thinks your cat feels,
 puts that feeling on the photo as a sticker, and hands it to the native
 sharesheet.
 
-The app is a static site. It runs entirely in the browser. Your photo never
-leaves your device.
+The frontend is a static site on GitHub Pages. The reading itself comes from
+a small backend on Google Cloud Run — see [server/](server/) for how that
+works. Your photo is sent there just long enough to be read, then it's gone;
+nothing is stored.
 
 ## How the reading works
 
-The app cannot see ears, pupils or whiskers directly. It measures things it
-*can* see, then matches those measurements to how cats actually carry moods:
-
-| Measurement | Real cue it stands for |
-|---|---|
-| Brightness and warmth | Sunlight against shade. Relaxed cats settle into warm, even light. |
-| Contrast and dark share | Deep shadow and wide pupils. Hard light reads as alarm. |
-| Sharpness | Stillness against motion. A hunting cat freezes. A drowsy one softens. |
-| Centre focus | A face that fills the frame. Cats ask for things up close. |
-| Frame shape | A tall sit or loaf, against a wide sprawl. |
+The backend finds the cat's actual face (an OpenCV Haar cascade, with a dlib
+detector as fallback), then measures its real geometry — ear-base angle,
+head tilt, muzzle ratio — with an 8-point facial landmark model
+([pycatfd](https://github.com/marando/pycatfd)), plus how bright, sharp, and
+even the light is on the face itself. That combination maps onto one of ten
+feelings, chosen to mirror how cats actually carry those moods.
 
 The app shows its confidence, names its second guess, and lists the evidence.
-It says plainly that this is a considered guess, not a diagnosis.
-
-MobileNet then confirms whether the photo really holds a cat. That step is
-optional. If it fails, the app says nothing about it and works as normal.
+It says plainly that this is a considered guess, not a diagnosis — no
+validated model for reading general cat *emotion* (as opposed to pain) exists
+anywhere, and this app doesn't pretend otherwise. Full reasoning and sourcing
+in [server/README.md](server/README.md).
 
 ## Commands
 
@@ -35,25 +33,26 @@ npm test         # the full test suite
 npm run build    # production build into dist/
 ```
 
-## Deploying
+The backend is a separate project — see [server/README.md](server/README.md)
+for running or redeploying it.
+
+## Deploying the frontend
 
 Push to `main`. The workflow in `.github/workflows/deploy.yml` runs the tests,
 builds with the repository name as the base path, and publishes to GitHub
-Pages. Turn on Pages in the repository settings, with **GitHub Actions** as the
-source.
+Pages. Pages is set to build from **GitHub Actions**.
 
 ## Layout
 
 | Path | Purpose |
 |---|---|
-| `src/lib/features.ts` | Turn pixels into numbers. |
-| `src/lib/feelings.ts` | Turn numbers into a feeling. |
-| `src/lib/analyse.ts` | Shrink the photo, then run the two steps above. |
+| `src/lib/deeper-read.ts` | Calls the backend, translates its response and its failure modes. |
 | `src/lib/sticker.ts` | Lay out and draw the sticker. |
 | `src/lib/share.ts` | Native sharesheet, with a download fallback. |
-| `src/lib/cat-check.ts` | Optional MobileNet cat confirmation. |
 | `src/main.ts` | Wire the interface. |
-| `test/` | The test suite, including a real cat photograph. |
+| `test/` | Unit tests for the modules above, with an injected `fetch`/measurer so nothing touches the network. |
+| `server/` | The FastAPI backend: face detection, landmark geometry, the feeling catalogue, and its own test suite. |
 
-The test fixture is [Cat August 2010-4.jpg](https://commons.wikimedia.org/wiki/File:Cat_August_2010-4.jpg)
-from Wikimedia Commons.
+The photo used for manual testing is
+[Cat August 2010-4.jpg](https://commons.wikimedia.org/wiki/File:Cat_August_2010-4.jpg)
+from Wikimedia Commons, at `test/fixtures/cat.jpg`.

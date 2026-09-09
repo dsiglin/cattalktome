@@ -1,9 +1,7 @@
 import './style.css';
-import { analysePhoto, type Analysis } from './lib/analyse';
 import { layoutSticker, drawSticker } from './lib/sticker';
 import { shareSticker, supportsFileShare } from './lib/share';
-import { verifyCat } from './lib/cat-check';
-import { requestDeeperRead } from './lib/deeper-read';
+import { requestDeeperRead, type DeeperReading } from './lib/deeper-read';
 
 /** The largest photo the app draws. This keeps the shared file small. */
 const MAX_RENDER_SIDE = 1400;
@@ -13,8 +11,8 @@ const DEEPER_READ_API = 'https://cat-talk-to-me-api-982825418658.us-central1.run
 
 const THINKING_LINES = [
   'Sitting with your cat for a moment…',
-  'Reading the light and the shadows…',
-  'Looking at how still they are…',
+  'Sending it over for a closer look…',
+  'Reading ears, eyes, and muzzle shape…',
   'Choosing my words carefully…',
 ];
 
@@ -35,13 +33,10 @@ const fileInput = $<HTMLInputElement>('file');
 const dropzone = $<HTMLLabelElement>('dropzone');
 const canvas = $<HTMLCanvasElement>('result-canvas');
 const shareButton = $<HTMLButtonElement>('share');
-const deeperButton = $<HTMLButtonElement>('deeper-btn');
 const toast = $('toast');
 
 let currentLabel = 'Cat';
 let currentBlurb = '';
-/** The photo before any sticker was drawn on it - what the deeper read uploads. */
-let cleanPhoto: HTMLCanvasElement | null = null;
 
 function show(which: keyof typeof panels) {
   for (const [name, panel] of Object.entries(panels)) panel.hidden = name !== which;
@@ -63,7 +58,7 @@ function drawPhoto(bitmap: ImageBitmap): CanvasRenderingContext2D {
   return ctx;
 }
 
-function renderDeeperReading(reading: import('./lib/deeper-read').DeeperReading) {
+function renderReading(reading: DeeperReading) {
   const { feeling, runnerUpLabel, confidence, evidence, reliable } = reading;
 
   $('verdict-emoji').textContent = feeling.emoji;
@@ -83,32 +78,7 @@ function renderDeeperReading(reading: import('./lib/deeper-read').DeeperReading)
   $('meter-fill').style.width = `${percent}%`;
   $('meter').setAttribute('aria-label', `confidence ${percent} percent`);
   $('meter-caption').textContent =
-    `${percent}% sure, from real face measurements. Second guess was “${runnerUpLabel}”.`;
-
-  currentLabel = `${feeling.label} ${feeling.emoji}`;
-  currentBlurb = `My cat is ${feeling.label.toLowerCase()}. ${feeling.blurb}`;
-}
-
-function renderReading(analysis: Analysis) {
-  const { feeling, runnerUp, confidence, evidence } = analysis;
-
-  $('verdict-emoji').textContent = feeling.emoji;
-  $('verdict-label').textContent = feeling.label;
-  $('verdict-blurb').textContent = feeling.blurb;
-  $('cue').textContent = feeling.cue;
-
-  const list = $('evidence');
-  list.replaceChildren(...evidence.map((line) => {
-    const li = document.createElement('li');
-    li.textContent = line;
-    return li;
-  }));
-
-  const percent = Math.round(confidence * 100);
-  $('meter-fill').style.width = `${percent}%`;
-  $('meter').setAttribute('aria-label', `confidence ${percent} percent`);
-  $('meter-caption').textContent =
-    `${percent}% sure. My second guess was “${runnerUp.label}”.`;
+    `${percent}% sure. My second guess was “${runnerUpLabel}”.`;
 
   currentLabel = `${feeling.label} ${feeling.emoji}`;
   currentBlurb = `My cat is ${feeling.label.toLowerCase()}. ${feeling.blurb}`;
@@ -126,29 +96,14 @@ function stampSticker(ctx: CanvasRenderingContext2D, label: string) {
   drawSticker(ctx, layoutSticker(canvas.width, canvas.height, label, measure), label);
 }
 
-async function runCatCheck(photoOnly: HTMLCanvasElement) {
-  const note = $('catcheck');
-  const verdict = await verifyCat(photoOnly);
-  if (!verdict) return;
-
-  const icon = document.createElement('span');
-  icon.className = 'ico';
-  icon.setAttribute('aria-hidden', 'true');
-  const words = document.createElement('span');
-
-  if (verdict.isBigCat) {
-    icon.textContent = '\u{1F981}';
-    words.textContent = `That reads as a ${verdict.label} to me. Bold choice. The feeling still stands.`;
-  } else if (verdict.isCat) {
-    icon.textContent = '\u2705';
-    words.textContent = `Confirmed cat (${verdict.label}).`;
-  } else {
-    icon.textContent = '\u{1F914}';
-    words.textContent = `I am not certain that is a cat \u2014 it looks more like a ${verdict.label}. I read it anyway.`;
-  }
-  note.replaceChildren(icon, words);
-  note.hidden = false;
-}
+const ERROR_COPY: Record<string, string> = {
+  'no-cat': "I could not find a cat's face in that photo. Try one where the face is clearer?",
+  'rate-limited': 'This little server has a visitor limit and it has been reached for now - try again a bit later.',
+  'too-large': 'That photo is too large to send. Try a smaller one?',
+  'bad-image': 'That file does not look like a picture the reader can open.',
+  network: 'Could not reach the reader - check your connection and try again.',
+  unknown: 'That hit a snag. Try again in a moment?',
+};
 
 async function handleFile(file: File) {
   if (!file.type.startsWith('image/')) {
@@ -157,7 +112,6 @@ async function handleFile(file: File) {
     return;
   }
 
-  $('catcheck').hidden = true;
   $('thinking-line').textContent = THINKING_LINES[0];
   show('thinking');
 
@@ -172,24 +126,28 @@ async function handleFile(file: File) {
     const ctx = drawPhoto(bitmap);
     bitmap.close?.();
 
-    // Keep a clean copy of the photo - for the cat-check classifier, and for
-    // the deeper read, which needs the photo without a sticker already on it.
+    // A clean copy of the photo, before any sticker lands on it - what gets
+    // uploaded, and what the sticker is later drawn on top of.
     const clean = document.createElement('canvas');
     clean.width = canvas.width;
     clean.height = canvas.height;
     clean.getContext('2d')?.drawImage(canvas, 0, 0);
-    cleanPhoto = clean;
 
-    const analysis = analysePhoto(ctx.getImageData(0, 0, canvas.width, canvas.height));
-    renderReading(analysis);
-    stampSticker(ctx, currentLabel);
+    const blob = await new Promise<Blob | null>((resolve) => clean.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('could not make an image to send');
 
+    const result = await requestDeeperRead(blob, DEEPER_READ_API);
     window.clearInterval(ticker);
+
+    if (!result.ok) {
+      $('error-text').textContent = ERROR_COPY[result.reason] ?? result.message;
+      show('error');
+      return;
+    }
+
+    renderReading(result.reading);
+    stampSticker(ctx, currentLabel);
     show('result');
-    $('deeper-status').hidden = true;
-    deeperButton.disabled = false;
-    $('deeper-btn-label').textContent = 'Get a deeper read';
-    void runCatCheck(clean);
   } catch (error) {
     window.clearInterval(ticker);
     console.error(error);
@@ -240,47 +198,6 @@ shareButton.addEventListener('click', async () => {
     say('That did not work. Try again?');
   } finally {
     shareButton.disabled = false;
-  }
-});
-
-deeperButton.addEventListener('click', async () => {
-  if (!cleanPhoto) return;
-  const status = $('deeper-status');
-  status.hidden = false;
-  status.classList.remove('is-error');
-  status.textContent = 'Uploading for a closer look…';
-  deeperButton.disabled = true;
-  $('deeper-btn-label').textContent = 'Looking closer…';
-
-  try {
-    const blob = await new Promise<Blob | null>((resolve) => cleanPhoto!.toBlob(resolve, 'image/png'));
-    if (!blob) throw new Error('could not make an image');
-
-    const result = await requestDeeperRead(blob, DEEPER_READ_API);
-
-    if (result.ok) {
-      renderDeeperReading(result.reading);
-      // Redraw the sticker from the clean copy, so the old sticker doesn't linger under the new one.
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(cleanPhoto, 0, 0);
-        stampSticker(ctx, currentLabel);
-      }
-      status.textContent = 'Deeper read complete — this used real ear, eye, and muzzle shape.';
-      $('deeper-btn-label').textContent = 'Read again';
-    } else {
-      status.classList.add('is-error');
-      status.textContent = result.message;
-      $('deeper-btn-label').textContent = 'Get a deeper read';
-    }
-  } catch (error) {
-    console.error(error);
-    status.classList.add('is-error');
-    status.textContent = 'That did not work. Try again?';
-    $('deeper-btn-label').textContent = 'Get a deeper read';
-  } finally {
-    deeperButton.disabled = false;
   }
 });
 

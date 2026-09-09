@@ -17,13 +17,8 @@
   "private": "true",
   "devDependencies": {
     "@vitest/coverage-v8": "^5.0.0",
-    "jpeg-js": "^0.4.4",
     "typescript": "^5.9.3",
     "vite": "^8.2.2",
     "vitest": "^5.0.0"
-  },
-  "dependencies": {
-    "@tensorflow-models/mobilenet": "^2.1.1",
-    "@tensorflow/tfjs": "^4.22.0"
   }
 }

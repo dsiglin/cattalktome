@@ -123,30 +123,37 @@ compiled output + `libgl1`/`libglib2.0-0`). Verified: correct output,
 ~70ms per request including the first request after a cold container
 start.
 
-## What's NOT done yet — needs your explicit go-ahead
+## Where this actually runs
 
-- **Actual cloud deployment.** This is built and container-verified
-  locally only. Deploying to Cloud Run needs your GCP project ID and
-  `gcloud auth login` — real infrastructure, so I stopped short of
-  doing it without your say-so. Sketch:
-  ```bash
-  gcloud run deploy cat-talk-to-me-api \
-    --source server/ \
-    --region us-central1 \
-    --min-instances=1 --max-instances=1 \
-    --set-env-vars DAILY_CAP=100,PER_IP_LIMIT=10
-  ```
-  (`--min-instances=1` avoids Cloud Run's cold-start and keeps the
-  in-memory guard meaningful; it also means the instance runs — and
-  bills — continuously rather than scaling to zero. Confirm that
-  tradeoff before deploying.)
-- **CORS narrowing.** `app/main.py` currently allows every origin
-  (`allow_origins=["*"]`) for local testing. Before any public deploy,
-  narrow this to the actual `github.io` origin.
-- **Frontend wiring.** The browser app doesn't call this endpoint yet —
-  it still only does the instant, on-device read. Wiring "deeper read"
-  as an opt-in button is the next step, once the API has a real URL.
-- **The privacy promise.** The browser app currently tells users their
-  photo never leaves the device. Once this API exists, that claim needs
-  to become conditional — true for the instant read, false for the
-  deeper one — and the UI needs to say so before the photo uploads.
+Deployed to Cloud Run, project `cat-talk-to-me-03477` (a personal Google
+account, isolated from any work project), region `us-central1`:
+
+```bash
+gcloud run deploy cat-talk-to-me-api \
+  --source server/ \
+  --region us-central1 \
+  --min-instances=0 --max-instances=2 \
+  --set-env-vars DAILY_CAP=100,PER_IP_LIMIT=10,PER_IP_WINDOW_S=3600
+```
+
+`--min-instances=0` was a deliberate correction from an earlier `=1` deploy:
+an always-on instance draws real dollars, since it burns through Cloud Run's
+free vCPU-second allowance in days rather than months. Scaling to zero costs
+$0 at this app's traffic and adds well under a second of cold-start latency
+in practice - a fair trade for staying free.
+
+The frontend now calls this endpoint as its **only** way of getting a
+reading - there is no client-side fallback. `app/main.py`'s CORS is still
+wide open (`allow_origins=["*"]`); fine for a low-stakes personal project,
+worth narrowing to the `github.io` origin if this ever needs to be locked
+down.
+
+## The privacy story, as it actually is now
+
+The frontend's earlier design ran an on-device heuristic first and offered
+this backend as an opt-in "deeper read." That's gone - the client-side
+heuristic and its MobileNet cat-check were both deleted once this backend
+proved it does the job better (a real face detector beats an ImageNet
+classifier every time). Every reading now uploads the photo here. The app
+says so plainly, and nothing is stored server-side - the photo is decoded,
+measured, and discarded in memory per request.

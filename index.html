@@ -19,9 +19,8 @@
         <p class="kicker">a small, kind thing</p>
         <h1>Cat, <em>talk to me</em></h1>
         <p class="subtitle">
-          Show me a photo of your cat. I will look at the light, the shadows and the
-          stillness in it, and tell you what I think they feel — so you can tell
-          everybody else.
+          Drop a photo of your cat and I'll take a real look — ears, eyes, the
+          whole face — then tell you what I think they're feeling.
         </p>
       </header>
 
@@ -34,12 +33,6 @@
             <span class="dropzone-hint">or tap to pick a photo</span>
             <input type="file" id="file" accept="image/*" class="visually-hidden" />
           </label>
-          <p class="privacy">
-            <span class="ico" aria-hidden="true">🔒</span>
-            By default your photo never leaves this device — the first read happens
-            right here in your browser. An optional deeper read can upload it to a
-            small server for a closer look, but only if you ask for one.
-          </p>
         </div>
 
         <!-- Step 2: thinking -->
@@ -71,26 +64,12 @@
               <ul id="evidence"></ul>
               <p class="cue" id="cue"></p>
               <p class="honesty">
-                This is a considered guess, not a diagnosis. I measure real things in
-                your photo — light, warmth, shadow, sharpness, where the detail sits —
-                and match them to how cats actually carry those moods. A vet reads a
-                cat properly. I read a picture.
+                This is a considered guess, not a diagnosis. A small server finds
+                your cat's actual face and measures real ear angle, head tilt, and
+                muzzle shape, then matches them to how cats actually carry those
+                moods. A vet reads a cat properly. I read a picture.
               </p>
             </details>
-
-            <div class="deeper">
-              <button class="btn-link" id="deeper-btn" type="button">
-                <span class="ico" aria-hidden="true">🔬</span>
-                <span id="deeper-btn-label">Get a deeper read</span>
-              </button>
-              <p class="deeper-hint">
-                Uploads this photo to a small server that measures real ear, eye, and
-                muzzle shape instead of just light and shadow. Nothing is stored.
-              </p>
-              <p class="deeper-status" id="deeper-status" hidden></p>
-            </div>
-
-            <p class="catcheck" id="catcheck" hidden></p>
           </div>
 
           <div class="actions">
@@ -111,9 +90,9 @@
       </section>
 
       <footer class="footnote">
-        <p>Made slowly, for people who talk to their cats. No accounts, no tracking — the
-          instant read never leaves your device, and the deeper read only uploads a
-          photo when you ask for one.</p>
+        <p>Made slowly, for people who talk to their cats. No accounts, no tracking.
+          Your photo is sent to a small server just long enough to read it, then
+          it's gone.</p>
       </footer>
     </main>
 

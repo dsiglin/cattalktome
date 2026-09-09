@@ -134,14 +134,6 @@ h1 em {
 .dropzone-title { font-size: 1.28rem; font-weight: 800; }
 .dropzone-hint { color: var(--cocoa-soft); font-size: 0.95rem; }
 
-.privacy {
-  margin: 1.1rem 0 0;
-  text-align: center;
-  font-size: 0.88rem;
-  color: var(--cocoa-soft);
-  line-height: 1.5;
-}
-
 /* ------------------------------- thinking ------------------------------- */
 
 .thinking { text-align: center; padding: 2.2rem 0.5rem; }
@@ -240,13 +232,6 @@ h1 em {
 }
 
 .honesty { margin: 0; font-size: 0.84rem; color: var(--cocoa-soft); opacity: 0.9; }
-
-.catcheck {
-  margin: 0.9rem 0 0;
-  font-size: 0.88rem;
-  color: var(--cocoa-soft);
-}
-.catcheck[hidden] { display: none; }
 
 /* -------------------------------- actions ------------------------------- */
 
@@ -353,43 +338,3 @@ h1 em {
 }
 
 .ico { margin-right: 0.5em; }
-
-/* -------------------------------- deeper read ---------------------------- */
-
-.deeper {
-  margin-top: 1rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--paper-edge);
-}
-
-.btn-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0 0 0.4rem;
-  font-family: inherit;
-  font-size: 0.95rem;
-  font-weight: 800;
-  color: var(--terracotta);
-  cursor: pointer;
-}
-.btn-link:hover { color: var(--terracotta-dark); text-decoration: underline; }
-.btn-link:disabled { opacity: 0.6; cursor: default; text-decoration: none; }
-
-.deeper-hint {
-  margin: 0 0 0.5rem;
-  font-size: 0.85rem;
-  color: var(--cocoa-soft);
-}
-
-.deeper-status {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--sage);
-}
-.deeper-status.is-error { color: var(--terracotta-dark); }
-.deeper-status[hidden] { display: none; }
