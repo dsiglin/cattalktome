@@ -10,9 +10,33 @@ from app.detect import NoCatFaceFound
 
 FIXTURE = Path(__file__).resolve().parent.parent.parent / "test" / "fixtures" / "cat.jpg"
 
+# A defensive Sphynx cat, ears back, hissing at a dog from her owner's
+# shoulder - CC BY-SA, Trilobite2, commons.wikimedia.org/wiki/File:Angry_Sphynx.jpg.
+# The default Haar cascade settings (scaleFactor=1.05, minNeighbors=3)
+# missed this entirely - a real user-reported failure. Regression fixture
+# for the looser settings in detect.py.
+HARD_POSE_FIXTURE = Path(__file__).resolve().parent.parent.parent / "test" / "fixtures" / "angry-sphynx.jpg"
+
 
 def test_fixture_exists():
     assert FIXTURE.exists(), f"expected fixture at {FIXTURE}"
+    assert HARD_POSE_FIXTURE.exists(), f"expected fixture at {HARD_POSE_FIXTURE}"
+
+
+def test_detects_a_defensive_off_angle_cat_the_default_cascade_settings_missed():
+    """
+    Regression guard for a real user report: two photos in a row failed
+    with 'no cat face found.' Investigation found the Haar cascade's
+    default-ish settings (scaleFactor=1.05, minNeighbors=3) detected only
+    6 of 9 real test photos - missing profile angles, mid-hiss open
+    mouths, and this photo specifically. A finer scale step and lower
+    neighbor count (1.02 / 2) recovered 8 of 9, with zero new false
+    positives measured on blank and random-noise images, at a real but
+    small cost (~70ms slower per request).
+    """
+    result = analyse_bytes(HARD_POSE_FIXTURE.read_bytes())
+    x, y, w, h = result.face.box
+    assert w > 40 and h > 40
 
 
 def test_detects_a_real_cat_face_and_reads_a_feeling():
