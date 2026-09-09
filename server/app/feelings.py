@@ -184,7 +184,7 @@ def _evidence(g: FaceGeometry, p: FaceLight) -> List[str]:
     else:
         lines.append("The light on the face is even.")
 
-    if abs(g.left_ear_angle_deg) > 30 or abs(g.right_ear_angle_deg) > 30:
+    if _flat_ears(g) > 0.35:
         lines.append("The ears read swept back, not upright.")
     else:
         lines.append("The ears read upright and forward.")
