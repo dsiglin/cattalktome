@@ -1,5 +1,6 @@
 import './style.css';
-import { layoutSticker, drawSticker } from './lib/sticker';
+import { layoutSticker, layoutBonusSticker, drawSticker, BONUS_STICKER } from './lib/sticker';
+import { pickRandomGenZSticker } from './lib/genz-stickers';
 import { shareSticker, supportsFileShare } from './lib/share';
 import { requestDeeperRead, type DeeperReading } from './lib/deeper-read';
 
@@ -84,7 +85,7 @@ function renderReading(reading: DeeperReading) {
   currentBlurb = `My cat is ${feeling.label.toLowerCase()}. ${feeling.blurb}`;
 }
 
-/** Put the sticker on the photo, measuring the text with the real font. */
+/** Put the feeling sticker, plus a random just-for-fun one, on the photo. */
 function stampSticker(ctx: CanvasRenderingContext2D, label: string) {
   const measure = (text: string, fontSize: number) => {
     ctx.save();
@@ -94,6 +95,9 @@ function stampSticker(ctx: CanvasRenderingContext2D, label: string) {
     return width;
   };
   drawSticker(ctx, layoutSticker(canvas.width, canvas.height, label, measure), label);
+
+  const bonus = pickRandomGenZSticker();
+  drawSticker(ctx, layoutBonusSticker(canvas.width, canvas.height, bonus, measure), bonus, BONUS_STICKER);
 }
 
 const ERROR_COPY: Record<string, string> = {

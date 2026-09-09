@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { layoutSticker, estimateTextWidth } from '../src/lib/sticker';
+import { layoutSticker, layoutBonusSticker, estimateTextWidth } from '../src/lib/sticker';
 
 describe('layoutSticker', () => {
   it('scales the sticker with the short side of the photo', () => {
@@ -64,5 +64,35 @@ describe('estimateTextWidth', () => {
 
   it('counts an emoji as wider than a letter', () => {
     expect(estimateTextWidth('😴', 20)).toBeGreaterThan(estimateTextWidth('a', 20));
+  });
+});
+
+describe('layoutBonusSticker', () => {
+  it('sits near the top of the photo, opposite the main sticker', () => {
+    const bonus = layoutBonusSticker(1000, 1000, 'no cap 🐾');
+    const main = layoutSticker(1000, 1000, 'Wary 🫣');
+    expect(bonus.box.y).toBeLessThan(main.box.y);
+    expect(bonus.box.y).toBeLessThan(1000 * 0.2);
+  });
+
+  it('is smaller than the main sticker for the same photo', () => {
+    const bonus = layoutBonusSticker(1000, 1000, 'certified banger');
+    const main = layoutSticker(1000, 1000, 'certified banger');
+    expect(bonus.fontSize).toBeLessThan(main.fontSize);
+  });
+
+  it('keeps the sticker inside the photo across shapes', () => {
+    for (const [w, h] of [[800, 600], [600, 800], [1200, 1200], [1920, 480]]) {
+      const l = layoutBonusSticker(w, h, 'main character energy');
+      expect(l.box.x, `${w}x${h} left`).toBeGreaterThanOrEqual(0);
+      expect(l.box.y, `${w}x${h} top`).toBeGreaterThanOrEqual(0);
+      expect(l.box.x + l.box.width, `${w}x${h} right`).toBeLessThanOrEqual(w);
+      expect(l.box.y + l.box.height, `${w}x${h} bottom`).toBeLessThanOrEqual(h);
+    }
+  });
+
+  it('rejects an empty label and a sizeless photo', () => {
+    expect(() => layoutBonusSticker(1000, 1000, '  ')).toThrow();
+    expect(() => layoutBonusSticker(0, 1000, 'slay')).toThrow();
   });
 });

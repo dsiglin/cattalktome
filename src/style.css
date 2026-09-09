@@ -272,6 +272,15 @@ h1 em {
 }
 .btn-ghost:hover { border-color: var(--terracotta); color: var(--terracotta); }
 
+.btn-icon {
+  flex: 0 0 auto;
+  width: 52px;
+  min-height: 52px;
+  padding: 0;
+  font-size: 1.35rem;
+  border-radius: 50%;
+}
+
 .toast {
   margin: 0.85rem 0 0;
   min-height: 1.2rem;
