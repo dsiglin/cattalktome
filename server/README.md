@@ -35,6 +35,47 @@ plain with users about both:
   API — `null`). Fine for this local proof of concept; do not ship this
   publicly without contacting the author or replacing it.
 
+## Two calibration bugs found after shipping, and what fixed them
+
+Both had the same shape: a feature that looked like it should vary with
+real content, normalized against a reference point no real photo ever
+produces, so it barely varied at all.
+
+**Sharpness** was normalized against a synthetic checkerboard's mean
+|Laplacian| (~4.0). Measured across several real cat photos, raw values
+landed between 0.02 and 0.12 — every real photo scored sharpness under
+0.1 regardless of content. That made Locked-on and Curious unreachable
+in practice (they need real sharpness variation to win) and let Sleepy /
+Fully loafed win by default through their `(1 - sharpness)` terms.
+Recalibrated against real face-crop photographs (a 0.16 reference); also
+cut every formula's sharpness weight roughly in half, since it's an
+honest but weak proxy for stillness — mostly reflecting camera/focus
+quality, not the cat.
+
+**Ear-base angle** was measured from zero degrees, but a relaxed,
+upright ear in this 8-point scheme measures ~42 degrees by construction
+(its two landmark points sit at different heights on the ear's outline —
+a property of the landmark convention, not the cat's mood). Every calm
+photo already read as 68-87% of the way to "ears pinned back." Recentered
+on the empirically measured ~42-degree baseline instead of 0 — verified
+against a real photo of a cat crouching from a dog (55° average,
+correctly read as Wary).
+
+Both fixes are grounded in real photos, not just synthetic test fixtures
+— see `tests/test_pipeline_integration.py`'s
+`test_sharpness_does_not_cluster_near_zero_on_a_real_photo`, which
+guards the sharpness fix specifically using the repo's real fixture plus
+a genuinely blurred copy of it. A synthetic checkerboard can't stand in
+for that test: it has far more edge energy than any real photo even at
+a coarse tile size, so it saturates the sharpness scale regardless of
+which calibration is in use.
+
+**Still open:** face detection itself failed on the two most extreme
+real "flattened ears" photos tried during this investigation (a
+profile shot and a close-up hiss) — the detector may be systematically
+worse on exactly the alarmed poses this app most wants to catch. Not
+investigated further yet.
+
 ## Architecture
 
 | Module | Responsibility | Tested how |
@@ -47,7 +88,7 @@ plain with users about both:
 | `app/guard.py` | Per-IP sliding-window limit + global daily cap | 7 unit tests with an injected fake clock |
 | `app/main.py` | FastAPI endpoint, CORS, upload validation, guard wiring | tested live via curl, see below |
 
-44 tests total, all passing. Run them:
+45 tests total, all passing. Run them:
 
 ```bash
 cd server
@@ -65,9 +106,10 @@ curl -X POST http://127.0.0.1:8080/analyze \
 Verified result on the repo's real fixture: face detected at
 `(784, 215, 159×159)` via the Haar cascade, all 8 landmarks landing
 correctly on eyes/nose/chin/ears (see `debug_annotate.py` — run it to
-regenerate `debug_output.jpg`, a visual overlay). Reading: **Unimpressed**
-(confidence 0.38, runner-up "Fully loafed") — a plausible read of a cat
-lounging flat on a step, ears relaxed, muzzle open.
+regenerate `debug_output.jpg`, a visual overlay). Reading (after the
+calibration fixes below): **Demanding** (confidence 0.58, runner-up
+"Unimpressed") — a plausible read of a cat holding a level, symmetric,
+direct gaze at the camera.
 
 ## The abuse guard
 
