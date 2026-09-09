@@ -1,5 +1,5 @@
 import './style.css';
-import { layoutSticker, layoutBonusSticker, drawSticker, BONUS_STICKER } from './lib/sticker';
+import { layoutSticker, layoutImageSticker, drawSticker, drawImageSticker } from './lib/sticker';
 import { pickRandomGenZSticker } from './lib/genz-stickers';
 import { shareSticker, supportsFileShare } from './lib/share';
 import { requestDeeperRead, type DeeperReading } from './lib/deeper-read';
@@ -85,8 +85,19 @@ function renderReading(reading: DeeperReading) {
   currentBlurb = `My cat is ${feeling.label.toLowerCase()}. ${feeling.blurb}`;
 }
 
-/** Put the feeling sticker, plus a random just-for-fun one, on the photo. */
-function stampSticker(ctx: CanvasRenderingContext2D, label: string) {
+/** Load an image, resolving null instead of rejecting - a missing bonus
+ * sticker should never break the actual reading. */
+function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+/** Put the feeling sticker on the photo. */
+function stampLabel(ctx: CanvasRenderingContext2D, label: string) {
   const measure = (text: string, fontSize: number) => {
     ctx.save();
     ctx.font = `700 ${fontSize}px "Nunito", ui-rounded, system-ui, sans-serif`;
@@ -95,9 +106,18 @@ function stampSticker(ctx: CanvasRenderingContext2D, label: string) {
     return width;
   };
   drawSticker(ctx, layoutSticker(canvas.width, canvas.height, label, measure), label);
+}
 
-  const bonus = pickRandomGenZSticker();
-  drawSticker(ctx, layoutBonusSticker(canvas.width, canvas.height, bonus, measure), bonus, BONUS_STICKER);
+/** Fetch a random bonus sticker image and put it on the photo, opposite
+ * the feeling sticker. Decorative only - failures are silent. */
+async function stampBonusSticker(ctx: CanvasRenderingContext2D) {
+  const sticker = pickRandomGenZSticker();
+  const src = `${import.meta.env.BASE_URL}stickers/${sticker.file}`;
+  const image = await loadImage(src);
+  if (!image) return;
+
+  const aspect = image.naturalWidth / image.naturalHeight;
+  drawImageSticker(ctx, image, layoutImageSticker(canvas.width, canvas.height, aspect, sticker.file));
 }
 
 const ERROR_COPY: Record<string, string> = {
@@ -150,7 +170,8 @@ async function handleFile(file: File) {
     }
 
     renderReading(result.reading);
-    stampSticker(ctx, currentLabel);
+    stampLabel(ctx, currentLabel);
+    void stampBonusSticker(ctx);
     show('result');
   } catch (error) {
     window.clearInterval(ticker);

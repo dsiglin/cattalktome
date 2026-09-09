@@ -347,3 +347,13 @@ h1 em {
 }
 
 .ico { margin-right: 0.5em; }
+
+.attribution {
+  margin-top: 0.4rem !important;
+  font-size: 0.78rem !important;
+}
+.attribution a {
+  color: var(--cocoa-soft);
+  text-decoration: underline;
+}
+.attribution a:hover { color: var(--terracotta); }

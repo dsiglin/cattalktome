@@ -7,7 +7,7 @@
     "strict": true,
     "noUnusedLocals": true,
     "noEmit": true,
-    "types": ["vitest/globals"],
+    "types": ["vitest/globals", "vite/client"],
     "skipLibCheck": true
   },
   "include": ["src", "test", "vite.config.ts"]

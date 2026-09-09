@@ -2,21 +2,23 @@ import { describe, it, expect } from 'vitest';
 import { GENZ_STICKERS, pickRandomGenZSticker } from '../src/lib/genz-stickers';
 
 describe('GENZ_STICKERS', () => {
-  it('has a real catalogue of short, non-empty phrases', () => {
+  it('has a real catalogue of image stickers', () => {
     expect(GENZ_STICKERS.length).toBeGreaterThanOrEqual(10);
-    for (const phrase of GENZ_STICKERS) {
-      expect(phrase.length).toBeGreaterThan(2);
-      expect(phrase.length).toBeLessThanOrEqual(28);
+    for (const sticker of GENZ_STICKERS) {
+      expect(sticker.file.length).toBeGreaterThan(0);
+      expect(sticker.file.endsWith('.png')).toBe(true);
+      expect(sticker.alt.length).toBeGreaterThan(0);
     }
   });
 
-  it('has no duplicate phrases', () => {
-    expect(new Set(GENZ_STICKERS).size).toBe(GENZ_STICKERS.length);
+  it('has no duplicate files', () => {
+    const files = GENZ_STICKERS.map((s) => s.file);
+    expect(new Set(files).size).toBe(files.length);
   });
 });
 
 describe('pickRandomGenZSticker', () => {
-  it('always returns a phrase from the catalogue', () => {
+  it('always returns a sticker from the catalogue', () => {
     for (let i = 0; i < 20; i++) {
       const pick = pickRandomGenZSticker();
       expect(GENZ_STICKERS).toContain(pick);
