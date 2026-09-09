@@ -71,6 +71,18 @@ still lands in the fear family.
 
 ### Honest limits
 
+- **Haar cannot tell chest fur from a face, and cannot always tell a
+  face from a tail.** Measured on real photos: a fur "face" scored a Haar
+  level weight of 1.96 with 6 neighbours and strong eye-region contrast;
+  a real crouching cat's face scored -0.06 with 3. A tail collected the
+  same 2 rotation votes, from the same two cascades at the same angle, as
+  a real face. No cheap validator separates them. Such boxes only ever
+  come from the loose stage, which is flagged unreliable and capped at
+  50% confidence, and the app says the box may be fur. A cat in full
+  profile therefore returns either "no cat face found" or a hedged,
+  capped reading - never a confident one. The real fix is a better
+  detector (see NanoDet below).
+
 - **"Content" (half-closed eyes) is not offered.** It needs eye
   aperture, and the 8-point scheme has no eyelid points.
 - **Pupils respond to ambient light as well as arousal.** The pupil term
@@ -105,7 +117,15 @@ first hit:
 |---|---|---|---|
 | 1 strict | `haar` | true | Extended cascade, `scaleFactor=1.05`, `minNeighbors=3`, `minSize=75` |
 | 2 rotated | `haar-rotated` | true | Both cascades at ±20° and ±35°; boxes mapped back, clustered by IoU ≥ 0.3, need ≥ 2 votes; winner by (votes, area); median box |
-| 3 loose | `haar-loose` | **false** | Extended cascade at `1.02`/`2`. The reading hedges: `reliable=false` |
+| 3 loose | `haar-loose` | **false** | Extended cascade at `1.02`/`2`. The reading hedges: `reliable=false`, confidence capped at 0.50 |
+| fix-up | `haar-contained` | true | After stage 1 or 2: if a box ≥ 2.5× larger, found by the extended cascade at loose settings and confirmed by the standard cascade, *contains* the chosen box, the chosen box was a face part (a Savannah's muzzle, a tabby's eye). Use the container. |
+
+Detection runs on a copy no larger than **1400 px** on its long side - the
+same size the browser app uploads. On a 1450×2576 phone photo every stage
+missed a 550 px face at full resolution and the loose stage settled on a
+patch of fur; at 500-1600 px the rotated stage found the same face every
+time. The landmarks and the pupil measurement still use the full-resolution
+pixels.
 
 Results on the three fixtures in `test/fixtures/`:
 
@@ -123,7 +143,7 @@ stage 3 flagged unreliable, 1 honest "no cat face found."
 
 | Module | Responsibility | Tested how |
 |---|---|---|
-| `app/detect.py` | Staged Haar detection (strict → rotated+voted → loose) → dlib shape predictor | 8 integration tests on 3 real fixtures |
+| `app/detect.py` | Downscale to 1400px → staged Haar (strict → rotated+voted → loose) → face-part fix-up → dlib shape predictor on full-res | 12 integration tests on 5 real fixtures |
 | `app/geometry.py` | Pure math: 8 landmarks → head tilt, ear spread, muzzle ratio, nose offset/symmetry | 15 unit tests on synthetic coordinates |
 | `app/eyes.py` | Pupil dilation from the eye landmarks; declares itself unusable rather than guess | 8 unit tests on synthetic eyes |
 | `app/feelings.py` | Maps geometry + eyes → one of 7 feelings, with face-only evidence | 20 unit tests, reachability-checked, banned-word check on evidence |

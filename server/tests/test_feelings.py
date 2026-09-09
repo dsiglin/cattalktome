@@ -79,6 +79,16 @@ class TestReadFeeling:
     def test_flags_low_reliability_when_the_detector_was_unsure(self):
         assert read_feeling(geo(), eyes(), face_reliable=False).reliable is False
 
+    def test_an_unreliable_reading_never_looks_sure(self):
+        # The same relaxed face that scores 0.90 when the detector was sure
+        # must cap at a coin flip when the box came from the loose stage -
+        # that stage has been seen to pick a patch of chest fur.
+        sure = read_feeling(geo(ear_splay_ratio=2.5, muzzle_ratio=1.35), eyes(dilation=0.29))
+        unsure = read_feeling(geo(ear_splay_ratio=2.5, muzzle_ratio=1.35), eyes(dilation=0.29), face_reliable=False)
+        assert sure.confidence > 0.5
+        assert unsure.confidence <= 0.5
+        assert unsure.feeling.id == sure.feeling.id
+
     # --- scenarios grounded in real measurements -------------------------
 
     def test_alert_wide_eyed_cat_reads_curious_or_focused(self):

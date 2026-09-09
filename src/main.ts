@@ -69,7 +69,9 @@ function renderReading(reading: DeeperReading) {
   $('cue').textContent = feeling.cue;
 
   const list = $('evidence');
-  const lines = reliable ? evidence : [...evidence, 'The detected face looked a little off-angle, so hold this one loosely.'];
+  const lines = reliable
+    ? evidence
+    : [...evidence, 'I am not sure I found the face - it may be at an odd angle, or I may have picked a patch of fur. Hold this one loosely.'];
   list.replaceChildren(...lines.map((line) => {
     const li = document.createElement('li');
     li.textContent = line;

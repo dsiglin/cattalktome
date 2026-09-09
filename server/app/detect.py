@@ -86,7 +86,7 @@ def _shape_predictor():
 class DetectedFace:
     box: tuple  # (x, y, w, h) in the original image
     landmarks: list  # 8 (x, y) points, pycatfd CatFaceLandmark order
-    detector: str  # "haar", "haar-rotated", or "haar-loose" - which stage found it
+    detector: str  # "haar", "haar-rotated", "haar-contained", or "haar-loose" - which stage found it
     reliable: bool  # False when the box came from the loose stage
 
 
@@ -167,9 +167,73 @@ def _stage_loose(gray):
     return _largest(boxes) if len(boxes) else None
 
 
+_DETECT_MAX_SIDE = 1400
+"""Detection runs on a copy no larger than this on its longest side.
+
+Haar cascades are trained on 24x24 patches and get noisy on large, finely
+textured photos. On a 1450x2576 phone photo of a wide-eyed tabby, every
+stage missed the 550px face at full resolution and the loose stage
+settled on a 168px patch of fur; downscaled to anywhere between 500 and
+1600px, the rotated stage found the same face box every time. On a
+2576px photo of a cat in profile, full resolution produced a *false*
+face on the chest fur, and 1400px correctly found nothing.
+
+1400 is also exactly the long side the browser app uploads (MAX_RENDER_SIDE
+in src/main.ts), so for photos from the app the server measures the very
+pixels the phone sent, with no second resampling in between.
+
+The box is found on the downscaled copy and mapped back; the landmarks
+and the pupil measurement still use the full-resolution pixels.
+
+Known limit, measured and accepted: fluffy chest fur can produce a
+Haar "face" that no cheap check separates from a real one (its level
+weight, neighbour count, and eye-region contrast all overlap with real
+faces found by the loose stage). Such a box only ever comes from the
+loose stage, which is flagged unreliable, and the scorer caps the
+confidence of any unreliable reading at 0.5."""
+
+
+_CONTAINER_AREA_RATIO = 2.5
+_CONTAINER_SLACK = 0.2  # the small box may poke out of the big one by this fraction of its size
+
+
+def _contains(outer, inner) -> bool:
+    ox, oy, ow, oh = outer
+    ix, iy, iw, ih = inner
+    sx, sy = iw * _CONTAINER_SLACK, ih * _CONTAINER_SLACK
+    return ox <= ix + sx and oy <= iy + sy and ox + ow >= ix + iw - sx and oy + oh >= iy + ih - sy
+
+
+def _containing_face(gray, box):
+    """A face *part* mistaken for a face: the strict stage has picked a
+    cat's muzzle (a Savannah, 166px) and a cat's eye (a tabby, 90px) and
+    reported them as whole faces with a straight face. The signature is
+    specific: a much larger box, found by the extended cascade at loose
+    settings and confirmed by the standard cascade, that *contains* the
+    small one. Across 25 real photos this fires exactly once, on the
+    Savannah, and lands on its actual face. A tail or a patch of fur next
+    to a real face does not contain it, so this cannot swap a correct
+    small face for a wrong big one."""
+    ext = [tuple(int(v) for v in b) for b in _ext().detectMultiScale(gray, scaleFactor=1.02, minNeighbors=2, minSize=(_MIN_FACE_PX, _MIN_FACE_PX))]
+    std = [tuple(int(v) for v in b) for b in _std().detectMultiScale(gray, scaleFactor=1.02, minNeighbors=2, minSize=(_MIN_FACE_PX, _MIN_FACE_PX))]
+    area = box[2] * box[3]
+    best = None
+    for c in ext:
+        if c[2] * c[3] < _CONTAINER_AREA_RATIO * area or not _contains(c, box):
+            continue
+        if max((_iou(c, s) for s in std), default=0.0) < _CLUSTER_IOU:
+            continue
+        if best is None or c[2] * c[3] > best[2] * best[3]:
+            best = c
+    return best
+
+
 def detect_cat_face(bgr) -> DetectedFace:
     """Find a cat face and its 8 landmarks in a BGR image (as loaded by cv2.imread)."""
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    h_full, w_full = gray.shape
+    scale = min(1.0, _DETECT_MAX_SIDE / max(h_full, w_full))
+    small = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1.0 else gray
 
     box, detector, reliable = None, "", False
     for stage_fn, name, trust in (
@@ -177,7 +241,7 @@ def detect_cat_face(bgr) -> DetectedFace:
         (_stage_rotated, "haar-rotated", True),
         (_stage_loose, "haar-loose", False),
     ):
-        box = stage_fn(gray)
+        box = stage_fn(small)
         if box is not None:
             detector, reliable = name, trust
             break
@@ -185,6 +249,13 @@ def detect_cat_face(bgr) -> DetectedFace:
     if box is None:
         raise NoCatFaceFound("no cat face found at any detection stage")
 
+    if reliable:
+        container = _containing_face(small, box)
+        if container is not None:
+            box, detector = container, "haar-contained"
+
+    # Map the box back onto the full-resolution image.
+    box = tuple(int(round(v / scale)) for v in box)
     x, y, w, h = box
     rect = dlib.rectangle(x, y, x + w, y + h)
     shape = _shape_predictor()(bgr, rect)

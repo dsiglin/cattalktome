@@ -98,3 +98,77 @@ def test_evidence_never_mentions_the_room():
         joined = " ".join(r.reading.evidence).lower()
         for banned in ("light", "bright", "dim", "focus", "sharp", "blur"):
             assert banned not in joined, f"{fixture.name}: evidence mentions the room: {banned!r}"
+
+
+WIDE_EYED_TABBY = FIXTURES / "wide-eyed-tabby-1400.jpg"
+"""The same grey tabby as ALERT_TABBY, a different day, as the app actually
+uploads it: the original 1450x2576 phone photo scaled to a 1400px long
+side. At full resolution every detection stage missed this 550px face
+and the loose stage settled on a patch of fur with unreadable pupils;
+the fix was to detect on a downscaled copy (detect._DETECT_MAX_SIDE)."""
+
+
+def test_wide_eyed_tabby_face_is_found_and_read_as_aroused():
+    r = analyse_bytes(WIDE_EYED_TABBY.read_bytes())
+    x, y, w, h = r.face.box
+    assert r.face.detector == "haar-rotated"
+    assert r.face.reliable is True
+    # face spans roughly x 200-560, y 240-620 in the 788x1400 fixture
+    assert 240 < w < 380 and 240 < h < 380, f"box {r.face.box} is not face-sized"
+    cx, cy = x + w / 2, y + h / 2
+    assert 340 < cx < 500 and 420 < cy < 600, f"box centre ({cx:.0f},{cy:.0f}) is not on the face"
+    assert r.eyes.usable and r.eyes.pupil_dilation > 0.5
+    assert r.reading.feeling.id in {"curious", "focused"}
+
+
+def test_a_smaller_upload_of_the_same_photo_lands_the_same_face():
+    """Detection runs on a 1400px copy, so a smaller upload must still find
+    the same face. (Upscaling is deliberately not tested: a JPEG round trip
+    at 2576px once made the strict stage fire on a leaf patch, and no Haar
+    signal - votes, level weight, second-cascade agreement - separates that
+    from a real face. That limit is documented in server/README.md.)"""
+    import cv2
+    import numpy as np
+    full = cv2.imdecode(np.frombuffer(WIDE_EYED_TABBY.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+    k = 1000 / 1400
+    smaller = cv2.resize(full, None, fx=k, fy=k, interpolation=cv2.INTER_AREA)
+    ok, buf = cv2.imencode(".png", smaller)
+    assert ok
+    a = analyse_bytes(WIDE_EYED_TABBY.read_bytes())
+    b = analyse_bytes(buf.tobytes())
+    ax, ay, aw, ah = a.face.box
+    bx, by, bw, bh = b.face.box
+    assert abs(bx / k - ax) < 0.15 * aw and abs(by / k - ay) < 0.15 * ah, f"{a.face.box} vs {b.face.box}"
+    assert 0.8 < (bw / k) / aw < 1.25
+    assert b.reading.feeling.id == a.reading.feeling.id
+
+
+PROFILE = FIXTURES / "orange-cat-profile-1400.jpg"
+"""A long-haired orange cat in full side profile at a window, as the app
+uploads it (1400px long side). One eye, one ear, no midline: nothing the
+reading measures is visible, so the honest answer is "no cat face
+found". At full resolution the strict stage produced a false face on
+the chest fur; at the 1400px detection size nothing fires."""
+
+
+def test_a_cat_in_profile_is_never_read_with_confidence():
+    """Fluffy chest fur can produce a Haar "face" that no cheap check
+    separates from a real one (measured: level weight, neighbour count and
+    eye contrast all overlap). The original 2576px photo scaled to 1400px
+    finds nothing; the same photo re-encoded as JPEG finds fur. Either
+    outcome is acceptable ONLY if the reading admits it: unreliable, and
+    capped at a coin flip. A confident reading of a cat in profile is the
+    failure this test guards against."""
+    try:
+        r = analyse_bytes(PROFILE.read_bytes())
+    except NoCatFaceFound:
+        return
+    assert r.face.detector == "haar-loose", "a profile must never pass a trusted stage"
+    assert r.reading.reliable is False
+    assert r.reading.confidence <= 0.5
+
+
+def test_loose_stage_readings_are_capped_at_a_coin_flip():
+    r = analyse_bytes(SPHYNX.read_bytes())
+    assert r.face.detector == "haar-loose"
+    assert r.reading.confidence <= 0.5

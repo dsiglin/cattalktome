@@ -179,6 +179,9 @@ FEELINGS: List[Feeling] = [
     ),
 ]
 
+_UNRELIABLE_CONFIDENCE_CAP = 0.5
+"""An unreliable reading never shows more than a coin flip's confidence."""
+
 _SYMMETRY_FLOOR = 0.55
 """Below this nose-symmetry score the face is likely a profile or a poor
 crop. The reading is flagged rather than hidden - the app should still show
@@ -241,10 +244,18 @@ def read_feeling(g: FaceGeometry, e: EyeSignals, face_reliable: bool = True) -> 
     margin = ranked[0][1] - ranked[1][1]
     confidence = round(_clamp(0.3 + 2.5 * margin, 0.3, 0.9), 2)
 
+    reliable = face_reliable and g.nose_symmetry >= _SYMMETRY_FLOOR
+    if not reliable:
+        # The box may not be a face at all (the loose detection stage has
+        # been seen to pick a patch of chest fur), or it is a profile the
+        # landmarks were never trained on. Whatever the geometry says, the
+        # reading must not present itself as sure.
+        confidence = min(confidence, _UNRELIABLE_CONFIDENCE_CAP)
+
     return Reading(
         feeling=ranked[0][0],
         runner_up=ranked[1][0],
         confidence=confidence,
         evidence=_evidence(g, e),
-        reliable=face_reliable and g.nose_symmetry >= _SYMMETRY_FLOOR,
+        reliable=reliable,
     )
