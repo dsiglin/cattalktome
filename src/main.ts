@@ -1,6 +1,6 @@
 import './style.css';
 import { layoutSticker, layoutImageSticker, drawSticker, drawImageSticker } from './lib/sticker';
-import { pickRandomGenZSticker } from './lib/genz-stickers';
+import { pickStickerFor } from './lib/genz-stickers';
 import { shareSticker, supportsFileShare } from './lib/share';
 import { requestDeeperRead, type DeeperReading } from './lib/deeper-read';
 
@@ -38,6 +38,7 @@ const toast = $('toast');
 
 let currentLabel = 'Cat';
 let currentBlurb = '';
+let currentFeelingId = '';
 
 function show(which: keyof typeof panels) {
   for (const [name, panel] of Object.entries(panels)) panel.hidden = name !== which;
@@ -83,6 +84,7 @@ function renderReading(reading: DeeperReading) {
 
   currentLabel = `${feeling.label} ${feeling.emoji}`;
   currentBlurb = `My cat is ${feeling.label.toLowerCase()}. ${feeling.blurb}`;
+  currentFeelingId = feeling.id;
 }
 
 /** Load an image, resolving null instead of rejecting - a missing bonus
@@ -108,10 +110,10 @@ function stampLabel(ctx: CanvasRenderingContext2D, label: string) {
   drawSticker(ctx, layoutSticker(canvas.width, canvas.height, label, measure), label);
 }
 
-/** Fetch a random bonus sticker image and put it on the photo, opposite
- * the feeling sticker. Decorative only - failures are silent. */
-async function stampBonusSticker(ctx: CanvasRenderingContext2D) {
-  const sticker = pickRandomGenZSticker();
+/** Fetch a bonus sticker that suits the feeling and put it on the photo,
+ * opposite the feeling label. Decorative only - failures are silent. */
+async function stampBonusSticker(ctx: CanvasRenderingContext2D, feelingId: string) {
+  const sticker = pickStickerFor(feelingId);
   const src = `${import.meta.env.BASE_URL}stickers/${sticker.file}`;
   const image = await loadImage(src);
   if (!image) return;
@@ -171,7 +173,7 @@ async function handleFile(file: File) {
 
     renderReading(result.reading);
     stampLabel(ctx, currentLabel);
-    void stampBonusSticker(ctx);
+    void stampBonusSticker(ctx, currentFeelingId);
     show('result');
   } catch (error) {
     window.clearInterval(ticker);

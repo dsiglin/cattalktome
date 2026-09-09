@@ -7,9 +7,11 @@
  * requires attribution, which is why the footer credits Flaticon - see
  * index.html.
  *
- * One is picked at random and stuck on the photo alongside the actual
- * feeling, the way a laptop lid collects stickers that have nothing to
- * do with each other.
+ * One is picked to match the feeling that was read and stuck on the photo
+ * alongside the feeling label. It used to be fully random, which put a
+ * hissing cat sticker on a photo of a cat that was plainly calm - the
+ * sticker contradicted the reading. Now each feeling has its own small
+ * pool, and the pick is random only within that pool.
  */
 export interface GenZSticker {
   file: string;
@@ -35,7 +37,43 @@ export const GENZ_STICKERS: GenZSticker[] = [
   { file: 'shy.png', alt: 'A shy cat hiding its face' },
 ];
 
-/** Pick one sticker at random. Pass an rng for deterministic tests. */
+/**
+ * Which stickers suit which feeling. Keys are the server's feeling ids
+ * (server/app/feelings.py). Every sticker in the catalogue appears in at
+ * least one pool, and every pool has at least two entries so the pick
+ * still varies.
+ */
+export const STICKERS_BY_FEELING: Record<string, string[]> = {
+  curious: ['cute.png', 'idea.png', 'thinking.png', 'scratch.png'],
+  focused: ['thinking.png', 'idea.png', 'reading.png'],
+  frightened: ['screaming.png', 'shy.png', 'sad.png'],
+  cautious: ['shy.png', 'thinking.png', 'black-cat.png', 'sad.png'],
+  irritated: ['angry.png', 'arrogant.png', 'tired.png'],
+  trusting: ['love.png', 'smile.png', 'celebration.png', 'sleep.png'],
+  unimpressed: ['arrogant.png', 'tired.png', 'reading.png', 'black-cat.png'],
+};
+
+function byFile(file: string): GenZSticker {
+  const found = GENZ_STICKERS.find((s) => s.file === file);
+  if (!found) throw new Error(`sticker pool names a file not in the catalogue: ${file}`);
+  return found;
+}
+
+/** The stickers that suit a feeling. Unknown feeling ids fall back to the
+ * whole catalogue rather than failing - the bonus sticker is decoration. */
+export function stickersFor(feelingId: string): GenZSticker[] {
+  const pool = STICKERS_BY_FEELING[feelingId];
+  return pool ? pool.map(byFile) : GENZ_STICKERS;
+}
+
+/** Pick one sticker that suits the feeling. Pass an rng for deterministic tests. */
+export function pickStickerFor(feelingId: string, rng: () => number = Math.random): GenZSticker {
+  const pool = stickersFor(feelingId);
+  const index = Math.min(pool.length - 1, Math.floor(rng() * pool.length));
+  return pool[index];
+}
+
+/** Pick one sticker at random from the whole catalogue. Pass an rng for deterministic tests. */
 export function pickRandomGenZSticker(rng: () => number = Math.random): GenZSticker {
   const index = Math.min(GENZ_STICKERS.length - 1, Math.floor(rng() * GENZ_STICKERS.length));
   return GENZ_STICKERS[index];
