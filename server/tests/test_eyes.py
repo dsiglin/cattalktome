@@ -35,11 +35,35 @@ def test_black_eyeballs_read_as_wide_pupils():
     assert e.pupil_dilation > 0.9
 
 
-def test_light_eyeballs_read_as_narrow_pupils():
+def test_light_eyeballs_with_a_slit_pupil_read_as_narrow():
     img, lm, iod = face_with_eyes(eye_value=150)
+    # a thin black slit in each light iris - a real narrow pupil
+    cy = img.shape[0] // 2
+    for x in (img.shape[1] // 2 - 50, img.shape[1] // 2 + 50):
+        cv2.rectangle(img, (x - 1, cy - 12), (x + 1, cy + 12), (10, 10, 10), -1)
     e = eye_signals(img, lm, iod)
     assert e.usable
-    assert e.pupil_dilation < 0.05
+    assert e.pupil_dilation < 0.08
+
+
+def test_eyeballs_with_no_dark_core_are_unreadable_not_narrow():
+    # A flash reflection or a squinted-shut eye leaves no pupil in view.
+    # This used to read "0.00 = narrow pupils" and turned frightened cats
+    # into calm ones. It must say "could not read" instead.
+    img, lm, iod = face_with_eyes(eye_value=150)
+    e = eye_signals(img, lm, iod)
+    assert e.usable is False
+    assert e.pupil_dilation == 0.5
+
+
+def test_one_readable_eye_is_enough():
+    img, lm, iod = face_with_eyes(eye_value=10)
+    # blow out the right eye only
+    cy = img.shape[0] // 2
+    cv2.circle(img, (img.shape[1] // 2 + 50, cy), int(iod * 0.22), (150, 150, 150), -1)
+    e = eye_signals(img, lm, iod)
+    assert e.usable
+    assert e.pupil_dilation > 0.9
 
 
 def test_partial_pupil_reads_in_between():

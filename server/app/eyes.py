@@ -21,6 +21,11 @@ Known confounds, handled by refusing to answer rather than guessing:
   - Retinal glow ("tapetum"). Flash or bright backlight makes dilated
     pupils reflect *bright*, reading as ~0.00 dark - the opposite of the
     truth. A blown-out eye disc sets `usable` False.
+  - No pupil in view. A flash reflection, a squinted eye, or a landmark
+    that missed the eye leaves a disc with no dark core at all. That used
+    to read as "0.00 = narrow pupils" and turned frightened cats into
+    calm ones. Now an eye with no dark core is unreadable, and if neither
+    eye is readable `usable` goes False.
   - Ambient light. Pupils also dilate in dim rooms regardless of mood.
     This is a real physiological confound with no fix short of knowing
     the light level; it is disclosed rather than hidden.
@@ -36,6 +41,13 @@ _DISC_FRACTION = 0.85  # keep the disc inside the eyeball, off the lid and fur
 _MIN_EYE_RADIUS_PX = 9
 _DARK_THRESHOLD = 70  # grayscale 0-255; below this reads as pupil
 _GLOW_THRESHOLD = 200  # mean disc brightness above this = reflective glow
+_NO_PUPIL_P5 = 80
+"""If even the darkest 5% of the eye disc is brighter than this, there is
+no pupil in view at all - the eye is reflecting a flash, squinted shut,
+or the landmark missed the eye. Measured on real photos: every eye with
+a visible pupil, even a slit, had a 5th percentile of 3-66; the eyes that
+read a false "0.00 narrow" had 82-164. Such an eye is not "narrow", it is
+unreadable, and saying so is the honest answer."""
 
 
 @dataclass(frozen=True)
@@ -64,8 +76,13 @@ def _disc_dark_fraction(gray, centre, radius):
     mask = (yy - crop.shape[0] / 2) ** 2 + (xx - crop.shape[1] / 2) ** 2 <= (radius * _DISC_FRACTION) ** 2
     px = crop[mask]
     if px.size == 0:
-        return float("nan"), float("nan")
-    return float((px < _DARK_THRESHOLD).mean()), float(px.mean())
+        return float("nan"), float("nan"), float("nan")
+    return float((px < _DARK_THRESHOLD).mean()), float(px.mean()), float(np.percentile(px, 5))
+
+
+def _readable(dark, mean, p5) -> bool:
+    """An eye counts only if it is in frame, not glowing, and shows a pupil."""
+    return not np.isnan(dark) and mean <= _GLOW_THRESHOLD and p5 <= _NO_PUPIL_P5
 
 
 def eye_signals(bgr, lm: Landmarks, interocular_dist: float) -> EyeSignals:
@@ -74,17 +91,17 @@ def eye_signals(bgr, lm: Landmarks, interocular_dist: float) -> EyeSignals:
         return EyeSignals(pupil_dilation=0.5, usable=False, left_raw=float("nan"), right_raw=float("nan"))
 
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    left_dark, left_mean = _disc_dark_fraction(gray, lm.left_eye, radius)
-    right_dark, right_mean = _disc_dark_fraction(gray, lm.right_eye, radius)
+    left = _disc_dark_fraction(gray, lm.left_eye, radius)
+    right = _disc_dark_fraction(gray, lm.right_eye, radius)
 
-    values = [left_dark, right_dark]
-    means = [left_mean, right_mean]
-    if any(np.isnan(v) for v in values) or any(m > _GLOW_THRESHOLD for m in means):
-        return EyeSignals(pupil_dilation=0.5, usable=False, left_raw=left_dark, right_raw=right_dark)
+    # Use every readable eye; one good eye beats a guess from two bad ones.
+    readable = [e[0] for e in (left, right) if _readable(*e)]
+    if not readable:
+        return EyeSignals(pupil_dilation=0.5, usable=False, left_raw=left[0], right_raw=right[0])
 
     return EyeSignals(
-        pupil_dilation=float(np.mean(values)),
+        pupil_dilation=float(np.mean(readable)),
         usable=True,
-        left_raw=left_dark,
-        right_raw=right_dark,
+        left_raw=left[0],
+        right_raw=right[0],
     )

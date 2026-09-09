@@ -37,6 +37,9 @@ def test_lounging_cat_resolves_at_the_strict_stage():
     assert r.face.detector == "haar"
     assert r.face.reliable is True
     assert r.reading.feeling.id in {f.id for f in FEELINGS}
+    # Narrow pupils (0.29), ears wide (2.51), muzzle loose (1.35), head
+    # level, nose symmetry 0.95: a relaxed cat looking at you.
+    assert r.reading.feeling.id == "trusting"
     assert 0.3 <= r.reading.confidence <= 0.9
     assert len(r.reading.evidence) >= 2
 
@@ -81,7 +84,7 @@ def test_alert_tabby_reads_as_aroused_not_unimpressed():
     r = analyse_bytes(ALERT_TABBY.read_bytes())
     assert r.eyes.usable, "the pupils in this photo are huge and clearly visible"
     assert r.eyes.pupil_dilation > 0.5
-    assert r.reading.feeling.id in {"curious", "locked-on"}, (
+    assert r.reading.feeling.id in {"curious", "focused"}, (
         f"read as {r.reading.feeling.id!r} - the old light-based model said Unimpressed"
     )
     joined = " ".join(r.reading.evidence).lower()

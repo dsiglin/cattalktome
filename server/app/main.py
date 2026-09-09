@@ -83,6 +83,7 @@ async def analyze(request: Request, photo: UploadFile = File(...)):
             "ear_splay_ratio": round(g.ear_splay_ratio, 2),
             "muzzle_ratio": round(g.muzzle_ratio, 2),
             "nose_symmetry": round(g.nose_symmetry, 2),
+            "nose_offset": round(g.nose_offset, 2),
         },
         "eyes": {
             "pupil_dilation": round(e.pupil_dilation, 2),

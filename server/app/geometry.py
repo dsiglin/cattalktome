@@ -87,10 +87,17 @@ class FaceGeometry:
 
     nose_symmetry: float
     """1.0 when the nose sits exactly on the eye-line midpoint's perpendicular,
-    falling toward 0 as it skews to one side. This is a face-orientation sanity
-    check, not an emotional cue - a low value usually means the detector found
-    a profile or poorly-cropped face, and the reading should be treated as less
-    reliable."""
+    falling toward 0 as it skews to one side. Two uses: below ~0.55 the
+    detector probably found a profile or a poor crop and the reading is
+    flagged unreliable; below ~0.91 the cat has turned its head part-way
+    from the camera. On real photos cats facing the lens scored 0.90-0.99;
+    heads turned away scored 0.87-0.89 - a thin separation, so a weak cue."""
+
+    nose_offset: float = 0.0
+    """Signed nose displacement along the eye line, in interocular widths.
+    Negative = nose toward the left eye, positive = toward the right eye.
+    Measured along the eye line (not the image x axis) so a tilted head
+    does not read as a turned one. abs(nose_offset) == 1 - nose_symmetry."""
 
 
 def face_geometry(lm: Landmarks) -> FaceGeometry:
@@ -108,8 +115,11 @@ def face_geometry(lm: Landmarks) -> FaceGeometry:
     eye_mid = ((lm.left_eye[0] + lm.right_eye[0]) / 2, (lm.left_eye[1] + lm.right_eye[1]) / 2)
     muzzle_ratio = _dist(lm.chin, eye_mid) / iod
 
-    nose_offset = abs(lm.nose[0] - eye_mid[0])
-    nose_symmetry = max(0.0, 1.0 - (nose_offset / iod))
+    # Project the nose onto the eye line's direction: how far it sits toward
+    # one eye or the other, as a fraction of the interocular distance.
+    ex, ey = (lm.right_eye[0] - lm.left_eye[0]) / iod, (lm.right_eye[1] - lm.left_eye[1]) / iod
+    nose_offset = ((lm.nose[0] - eye_mid[0]) * ex + (lm.nose[1] - eye_mid[1]) * ey) / iod
+    nose_symmetry = max(0.0, 1.0 - abs(nose_offset))
 
     return FaceGeometry(
         interocular_dist=iod,
@@ -119,4 +129,5 @@ def face_geometry(lm: Landmarks) -> FaceGeometry:
         right_ear_angle_deg=right_ear_angle,
         muzzle_ratio=muzzle_ratio,
         nose_symmetry=nose_symmetry,
+        nose_offset=nose_offset,
     )

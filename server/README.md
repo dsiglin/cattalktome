@@ -6,7 +6,7 @@ whole photo. Built and verified locally; not yet deployed.
 ## What this reads, and what it refuses to read
 
 The service finds the cat's face, places 8 landmarks on it, and measures
-four things about **the face only**:
+five things about **the face only**:
 
 | Signal | Measured how | Module |
 |---|---|---|
@@ -14,6 +14,7 @@ four things about **the face only**:
 | Ear spread | Distance between the ear tips over the interocular distance | `app/geometry.py` |
 | Muzzle shape | Nose-to-chin distance over the interocular distance | `app/geometry.py` |
 | Head tilt | Angle of the line between the eyes | `app/geometry.py` |
+| Face direction | Nose displacement along the eye line (`nose_offset`); a turned head drifts the nose toward one eye | `app/geometry.py` |
 
 Nothing about the room is an input. Brightness, contrast, and sharpness
 were removed after a real photo proved they contaminate the reading: an
@@ -27,33 +28,61 @@ heights on the ear outline). That is a property of the landmark
 convention, not the cat, and it produced "ears swept back" on cats whose
 ears were plainly up.
 
-### The five feelings the face can support
+### The seven feelings the face can support
 
-| Feeling | Pupils | Ears | Muzzle | Head |
-|---|---|---|---|---|
-| Curious | wide | out | loose | tilted |
-| Locked on | wide | out | tight | level |
-| Startled | wide | pulled in | tight | tilted |
-| Wary | (any) | pulled in | tight | tilted |
-| Unimpressed | narrow | out | loose | level |
+The catalogue follows the standard cat facial-expression chart (Happy,
+Angry, Frightened, Playful, Content) and the common body-language poster
+(Interested, Attentive, Cautious, Trusting, Irritated, Focus, ...), kept
+to what the five cues can tell apart:
 
-Pupils carry the most weight (4 of ~8 units). When the pupils cannot be
-read - face too small, or a retinal glow blowing out the eye - `eyes.py`
-says so, the pupil term drops out of every formula, and the evidence
-reads "I could not read the pupils." Wary needs no pupil term, so a
-frightened cat with glowing eyes still lands in the fear family.
+| Feeling | Pupils | Ears | Muzzle | Head | Face |
+|---|---|---|---|---|---|
+| Curious | wide | out | loose | tilted | - |
+| Focused | wide | out | tight | level | - |
+| Frightened | wide | pinned | tight | tilted | - |
+| Cautious | (any) | pinned | tight | tilted or low | - |
+| Irritated | narrow | pinned | tight | - | toward you |
+| Trusting | narrow | out | loose | level | toward you |
+| Unimpressed | narrow | out | - | - | turned away |
+
+Two rules came from looking at real photos, not from the charts:
+
+- **Narrow pupils mean trust only on a relaxed face.** A scared tabby
+  measured narrow pupils with pinned ears and a tight muzzle. Trusting is
+  therefore gated: pinned ears or a tight muzzle scale its score down
+  hard, and that cat reads Irritated instead.
+- **Unimpressed is about looking away**, not about pupils. Cats facing
+  the lens scored nose symmetry 0.90-0.99; heads turned part-way scored
+  0.87-0.89. Below ~0.91 the face counts as turned. The separation is
+  thin, because a frontal face detector only finds faces that mostly
+  face the lens, so this is a weak cue and Unimpressed needs narrow
+  pupils and easy ears as well.
+- **A "0.00" pupil is not a narrow pupil.** Three frightened cats on
+  flash-lit photos measured no dark pixel at all inside the eye. Every
+  real pupil, even a slit, has a near-black core. An eye with none is
+  unreadable (reflection, squint, or a missed landmark) and drops out;
+  before this rule, those frightened cats read as calm.
+
+When the pupils cannot be read - face too small, or a retinal glow
+blowing out the eye - `eyes.py` says so, the pupil term drops out of
+every formula, and the evidence reads "I could not read the pupils."
+Cautious needs no pupil term, so a frightened cat with glowing eyes
+still lands in the fear family.
 
 ### Honest limits
 
+- **"Content" (half-closed eyes) is not offered.** It needs eye
+  aperture, and the 8-point scheme has no eyelid points.
 - **Pupils respond to ambient light as well as arousal.** The pupil term
   is about the cat's eye, not the room, but a cat in a dark room has wide
-  pupils for optical reasons. The app discloses this.
+  pupils for optical reasons. The app discloses this. Flash photos of
+  frightened cats also measured "narrow" because the pupil reflected
+  bright - the tapetum confound.
 - **Body posture is out of reach.** Tail, crouch, and piloerection are
   the strongest emotion cues cats give, and no permissively licensed
   cat-pose model exists (YOLO-family models are AGPL, DeepLabCut is
-  academic-only). Research documented in the session; the closest
-  future step is opencv_zoo's NanoDet (Apache-2.0, 3.6 MB) as a
-  whole-cat first stage.
+  academic-only). The closest future step is opencv_zoo's NanoDet
+  (Apache-2.0, 3.6 MB) as a whole-cat first stage.
 - **No whisker point exists** in the 8-point scheme. Whisker change is
   one of the Feline Grimace Scale's five action units.
 - **The training data is the 2008 Zhang et al. cat dataset**, never
@@ -82,9 +111,9 @@ Results on the three fixtures in `test/fixtures/`:
 
 | Fixture | Stage | Box | Reading |
 |---|---|---|---|
-| `cat.jpg` (lounging) | `haar` | (784, 215, 158×158) | Unimpressed - narrow pupils, level head |
+| `cat.jpg` (lounging) | `haar` | (784, 215, 158×158) | Trusting - narrow pupils, ears out, facing the lens |
 | `alert-tabby-windowsill.png` (user's cat) | `haar-rotated` | (365, 152, 326×328) | Curious - pupils 0.63, ears out |
-| `angry-sphynx.jpg` (defensive, profile) | `haar-loose` | (183, 118, 109×109) | Locked on, flagged unreliable |
+| `angry-sphynx.jpg` (defensive, profile) | `haar-loose` | (183, 118, 109×109) | Focused, flagged unreliable |
 
 Across 11 real photos measured during development: 7 resolve at stage 1
 with IoU ≥ 0.98 against the strict box, 1 at stage 2, 2 extreme poses at
@@ -95,14 +124,14 @@ stage 3 flagged unreliable, 1 honest "no cat face found."
 | Module | Responsibility | Tested how |
 |---|---|---|
 | `app/detect.py` | Staged Haar detection (strict → rotated+voted → loose) → dlib shape predictor | 8 integration tests on 3 real fixtures |
-| `app/geometry.py` | Pure math: 8 landmarks → head tilt, ear spread, muzzle ratio, symmetry | 15 unit tests on synthetic coordinates |
-| `app/eyes.py` | Pupil dilation from the eye landmarks; declares itself unusable rather than guess | 6 unit tests on synthetic eyes |
-| `app/feelings.py` | Maps geometry + eyes → one of 5 feelings, with face-only evidence | 15 unit tests, reachability-checked, banned-word check on evidence |
+| `app/geometry.py` | Pure math: 8 landmarks → head tilt, ear spread, muzzle ratio, nose offset/symmetry | 15 unit tests on synthetic coordinates |
+| `app/eyes.py` | Pupil dilation from the eye landmarks; declares itself unusable rather than guess | 8 unit tests on synthetic eyes |
+| `app/feelings.py` | Maps geometry + eyes → one of 7 feelings, with face-only evidence | 20 unit tests, reachability-checked, banned-word check on evidence |
 | `app/pipeline.py` | Wires the above together | integration tests above |
 | `app/guard.py` | Per-IP sliding-window limit + global daily cap | 7 unit tests with an injected fake clock |
 | `app/main.py` | FastAPI endpoint, CORS, upload validation, guard wiring | tested live via curl, see below |
 
-51 tests total, all passing. Run them:
+57 tests total, all passing. Run them:
 
 ```bash
 cd server
