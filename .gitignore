@@ -2,3 +2,11 @@ node_modules/
 dist/
 .DS_Store
 *.local
+
+# training artefacts (large, reproducible)
+training/data/
+training/.venv/
+training/YOLOX/
+training/runs/
+training/__pycache__/
+training/yolox_nano.pth

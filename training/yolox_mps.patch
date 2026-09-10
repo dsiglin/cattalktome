@@ -1,0 +1,82 @@
+diff --git a/yolox/models/losses.py b/yolox/models/losses.py
+index 77b4d8e..96b303d 100644
+--- a/yolox/models/losses.py
++++ b/yolox/models/losses.py
+@@ -27,7 +27,7 @@ class IOUloss(nn.Module):
+         area_p = torch.prod(pred[:, 2:], 1)
+         area_g = torch.prod(target[:, 2:], 1)
+ 
+-        en = (tl < br).type(tl.type()).prod(dim=1)
++        en = (tl < br).to(tl.dtype).prod(dim=1)
+         area_i = torch.prod(br - tl, 1) * en
+         area_u = area_p + area_g - area_i
+         iou = (area_i) / (area_u + 1e-16)
+diff --git a/yolox/models/yolo_head.py b/yolox/models/yolo_head.py
+index d67abd1..821d50f 100644
+--- a/yolox/models/yolo_head.py
++++ b/yolox/models/yolo_head.py
+@@ -221,7 +221,7 @@ class YOLOXHead(nn.Module):
+         hsize, wsize = output.shape[-2:]
+         if grid.shape[2:4] != output.shape[2:4]:
+             yv, xv = meshgrid([torch.arange(hsize), torch.arange(wsize)])
+-            grid = torch.stack((xv, yv), 2).view(1, 1, hsize, wsize, 2).type(dtype)
++            grid = torch.stack((xv, yv), 2).view(1, 1, hsize, wsize, 2).to(output.device, output.dtype)
+             self.grids[k] = grid
+ 
+         output = output.view(batch_size, self.n_anchors, n_ch, hsize, wsize)
+@@ -243,8 +243,8 @@ class YOLOXHead(nn.Module):
+             shape = grid.shape[:2]
+             strides.append(torch.full((*shape, 1), stride))
+ 
+-        grids = torch.cat(grids, dim=1).type(dtype)
+-        strides = torch.cat(strides, dim=1).type(dtype)
++        grids = torch.cat(grids, dim=1).to(outputs.device, outputs.dtype)
++        strides = torch.cat(strides, dim=1).to(outputs.device, outputs.dtype)
+ 
+         outputs[..., :2] = (outputs[..., :2] + grids) * strides
+         outputs[..., 2:4] = torch.exp(outputs[..., 2:4]) * strides
+@@ -320,6 +320,7 @@ class YOLOXHead(nn.Module):
+                         obj_preds,
+                         labels,
+                         imgs,
++                        mode="gpu" if imgs.is_cuda else "cpu",  # tiny per-image ops are far cheaper on CPU than on MPS
+                     )
+                 except RuntimeError as e:
+                     # TODO: the string might change, consider a better way
+@@ -446,7 +447,6 @@ class YOLOXHead(nn.Module):
+     ):
+ 
+         if mode == "cpu":
+-            print("------------CPU Mode for This Batch-------------")
+             gt_bboxes_per_image = gt_bboxes_per_image.cpu().float()
+             bboxes_preds_per_image = bboxes_preds_per_image.cpu().float()
+             gt_classes = gt_classes.cpu().float()
+@@ -510,10 +510,11 @@ class YOLOXHead(nn.Module):
+         del pair_wise_cls_loss, cost, pair_wise_ious, pair_wise_ious_loss
+ 
+         if mode == "cpu":
+-            gt_matched_classes = gt_matched_classes.cuda()
+-            fg_mask = fg_mask.cuda()
+-            pred_ious_this_matching = pred_ious_this_matching.cuda()
+-            matched_gt_inds = matched_gt_inds.cuda()
++            dev = imgs.device
++            gt_matched_classes = gt_matched_classes.to(dev)
++            fg_mask = fg_mask.to(dev)
++            pred_ious_this_matching = pred_ious_this_matching.to(dev)
++            matched_gt_inds = matched_gt_inds.to(dev)
+ 
+         return (
+             gt_matched_classes,
+diff --git a/yolox/utils/boxes.py b/yolox/utils/boxes.py
+index dbe10d9..a63d415 100644
+--- a/yolox/utils/boxes.py
++++ b/yolox/utils/boxes.py
+@@ -97,7 +97,7 @@ def bboxes_iou(bboxes_a, bboxes_b, xyxy=True):
+ 
+         area_a = torch.prod(bboxes_a[:, 2:], 1)
+         area_b = torch.prod(bboxes_b[:, 2:], 1)
+-    en = (tl < br).type(tl.type()).prod(dim=2)
++    en = (tl < br).to(tl.dtype).prod(dim=2)
+     area_i = torch.prod(br - tl, 2) * en  # * ((tl < br).all())
+     return area_i / (area_a[:, None] + area_b - area_i)
+ 
