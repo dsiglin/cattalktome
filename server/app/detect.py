@@ -116,8 +116,8 @@ def _largest(boxes):
     return (int(x), int(y), int(w), int(h))
 
 
-def _stage_strict(gray):
-    boxes = _ext().detectMultiScale(gray, scaleFactor=1.05, minNeighbors=3, minSize=(_MIN_FACE_PX, _MIN_FACE_PX))
+def _stage_strict(gray, min_px=_MIN_FACE_PX):
+    boxes = _ext().detectMultiScale(gray, scaleFactor=1.05, minNeighbors=3, minSize=(min_px, min_px))
     return _largest(boxes) if len(boxes) else None
 
 
@@ -139,39 +139,45 @@ def _median_box(cluster):
     return tuple(int(v) for v in np.median(np.array(cluster), axis=0))
 
 
-def _stage_rotated(gray):
+_ROTATION_TIERS = ((-20, 20), (-35, 35))
+"""Try the gentle angles first; the steep ones only if nothing was found.
+Most pitched heads resolve in the first tier, at half the cost."""
+
+
+def _stage_rotated(gray, min_px=_MIN_FACE_PX):
     h, w = gray.shape
-    candidates = []
-    for cascade in (_ext(), _std()):
-        for deg in _ROTATIONS_DEG:
-            rotated, m = _rotate(gray, deg)
-            for b in cascade.detectMultiScale(rotated, scaleFactor=1.05, minNeighbors=3, minSize=(_MIN_FACE_PX, _MIN_FACE_PX)):
-                x, y, bw, bh = _unrotate_box(b, m)
-                # A box poking outside the real image sits on the rotation's padded corners.
-                if x < 0 or y < 0 or x + bw > w or y + bh > h:
-                    continue
-                candidates.append((x, y, bw, bh))
+    for angles in _ROTATION_TIERS:
+        candidates = []
+        for cascade in (_ext(), _std()):
+            for deg in angles:
+                rotated, m = _rotate(gray, deg)
+                for b in cascade.detectMultiScale(rotated, scaleFactor=1.05, minNeighbors=3, minSize=(min_px, min_px)):
+                    x, y, bw, bh = _unrotate_box(b, m)
+                    # A box poking outside the real image sits on the rotation's padded corners.
+                    if x < 0 or y < 0 or x + bw > w or y + bh > h:
+                        continue
+                    candidates.append((x, y, bw, bh))
 
-    # Cluster overlapping candidates; a real face is hit from several angles,
-    # a warp artifact usually only once.
-    clusters = []
-    for box in candidates:
-        for cluster in clusters:
-            if _iou(box, _median_box(cluster)) >= _CLUSTER_IOU:
-                cluster.append(box)
-                break
-        else:
-            clusters.append([box])
+        # Cluster overlapping candidates; a real face is hit from several angles,
+        # a warp artifact usually only once.
+        clusters = []
+        for box in candidates:
+            for cluster in clusters:
+                if _iou(box, _median_box(cluster)) >= _CLUSTER_IOU:
+                    cluster.append(box)
+                    break
+            else:
+                clusters.append([box])
 
-    supported = [c for c in clusters if len(c) >= _MIN_VOTES]
-    if not supported:
-        return None
-    best = max(supported, key=lambda c: (len(c), _median_box(c)[2] * _median_box(c)[3]))
-    return _median_box(best)
+        supported = [c for c in clusters if len(c) >= _MIN_VOTES]
+        if supported:
+            best = max(supported, key=lambda c: (len(c), _median_box(c)[2] * _median_box(c)[3]))
+            return _median_box(best)
+    return None
 
 
-def _stage_loose(gray):
-    boxes = _ext().detectMultiScale(gray, scaleFactor=1.02, minNeighbors=2, minSize=(_MIN_FACE_PX, _MIN_FACE_PX))
+def _stage_loose(gray, min_px=_MIN_FACE_PX):
+    boxes = _ext().detectMultiScale(gray, scaleFactor=1.02, minNeighbors=2, minSize=(min_px, min_px))
     return _largest(boxes) if len(boxes) else None
 
 
@@ -222,8 +228,11 @@ def _containing_face(gray, box):
     Savannah, and lands on its actual face. A tail or a patch of fur next
     to a real face does not contain it, so this cannot swap a correct
     small face for a wrong big one."""
-    ext = [tuple(int(v) for v in b) for b in _ext().detectMultiScale(gray, scaleFactor=1.02, minNeighbors=2, minSize=(_MIN_FACE_PX, _MIN_FACE_PX))]
-    std = [tuple(int(v) for v in b) for b in _std().detectMultiScale(gray, scaleFactor=1.02, minNeighbors=2, minSize=(_MIN_FACE_PX, _MIN_FACE_PX))]
+    # The container must be >= 2.5x the area, so its side is >= sqrt(2.5) x
+    # the box side; searching only at that size and up makes this cheap.
+    min_side = max(_MIN_FACE_PX, int(np.sqrt(_CONTAINER_AREA_RATIO) * min(box[2], box[3])))
+    ext = [tuple(int(v) for v in b) for b in _ext().detectMultiScale(gray, scaleFactor=1.02, minNeighbors=2, minSize=(min_side, min_side))]
+    std = [tuple(int(v) for v in b) for b in _std().detectMultiScale(gray, scaleFactor=1.02, minNeighbors=2, minSize=(min_side, min_side))]
     area = box[2] * box[3]
     best = None
     for c in ext:
@@ -234,6 +243,30 @@ def _containing_face(gray, box):
         if best is None or c[2] * c[3] > best[2] * best[3]:
             best = c
     return best
+
+
+_MIN_FACE_FRACTION_OF_CAT = 0.12
+_FACE_PART_FRACTION_OF_CAT = 0.25
+
+
+def _min_face_px(cats) -> int:
+    """A cat's face is at least ~12% of its body box's longer side (measured:
+    a curled-up cat's face was 34%; a standing side-on cat's about 20%).
+    Sized from the smallest cat so a small second cat is not skipped."""
+    if not cats:
+        return _MIN_FACE_PX
+    smallest = min(max(c.box[2], c.box[3]) for c in cats)
+    return max(_MIN_FACE_PX, int(smallest * _MIN_FACE_FRACTION_OF_CAT))
+
+
+def _could_be_a_face_part(box, cats) -> bool:
+    """Only a box that is small for its cat can be a muzzle or an eye mistaken
+    for the whole face. A box a quarter of the cat's longer side or more is
+    the face; skip the (expensive) container search for it."""
+    if not cats:
+        return True
+    longest = max(max(c.box[2], c.box[3]) for c in cats)
+    return max(box[2], box[3]) < _FACE_PART_FRACTION_OF_CAT * longest
 
 
 def detect_cat_face(bgr) -> DetectedFace:
@@ -264,17 +297,23 @@ def detect_cat_face(bgr) -> DetectedFace:
         box, detector, reliable = facedet.to_predictor_framing(faces[0].box), "yolox-face", True
 
     if box is None:
+        # Haar only needs to look for faces of a plausible size for the cat
+        # in the photo; that alone halves each cascade pass on one vCPU.
+        # (Cropping the search to the cat box was tried and rejected: a
+        # cascade's scale grid depends on the image extents, and the crop
+        # changed which faces were found. minSize changed none of them.)
+        min_px = _min_face_px(cats)
         for stage_fn, name, trust in (
             (_stage_strict, "haar", True),
             (_stage_rotated, "haar-rotated", True),
             (_stage_loose, "haar-loose", False),
         ):
-            candidate = stage_fn(small)
+            candidate = stage_fn(small, min_px)
             if candidate is not None and catdet.inside_any(candidate, cats):
                 box, detector, reliable = candidate, name, trust
                 break
 
-        if box is not None and reliable:
+        if box is not None and reliable and _could_be_a_face_part(box, cats):
             container = _containing_face(small, box)
             if container is not None:
                 box, detector = container, "haar-contained"
