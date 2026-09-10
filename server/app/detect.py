@@ -293,7 +293,12 @@ def detect_cat_face(bgr) -> DetectedFace:
 
     faces = facedet.find_faces(small_bgr)
     faces = [f for f in faces if catdet.inside_any(f.box, cats)]
-    if faces:
+    # A box the detector itself is not confident about is not treated as
+    # found here; it falls through to the Haar stages below (see
+    # facedet.CONF_RELIABLE for why - dlib can fabricate a plausible-looking
+    # but wrong landmark on a box like this, and geometry alone did not
+    # catch it on a real profile photo).
+    if faces and faces[0].score >= facedet.CONF_RELIABLE:
         box, detector, reliable = facedet.to_predictor_framing(faces[0].box), "yolox-face", True
 
     if box is None:

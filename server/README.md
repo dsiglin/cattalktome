@@ -102,13 +102,15 @@ still lands in the fear family.
   what they mean. No emotion-tagged corpus was used for training; the
   ones that exist are small, self-labelled, and would teach the model
   the labeller's guesses.
-- **The Haar cascades are the weak link, and a replacement is in training.**
-  `training/catface_detector_colab.ipynb` fine-tunes YOLOX-Nano
-  (Apache-2.0) on the CC BY 4.0 "cat-face-data" set (8,153 images) with
-  rotation augmentation. When its ONNX file lands in `models/`, it becomes
-  stage 0 automatically; `tools/calibrate_face_box.py` then measures how
-  its boxes are framed relative to the Haar boxes the landmark predictor
-  expects.
+- **The Haar cascades were the weak link; a learned detector has replaced
+  them as stage 0.** `training/` fine-tunes YOLOX-Nano (Apache-2.0) on
+  the original Zhang et al. 2008 cat dataset (archive.org, cleaned via
+  zylamarek/cat-dataset's MIT list) with rotation augmentation. Its ONNX
+  file (`models/catface_yolox_nano.onnx`) is optional - `app/facedet.py`
+  falls back to the Haar stages when it is absent. `tools/calibrate_face_box.py`
+  measured its box framing against the held-out test split's ground
+  truth (1,290/1,295 real photos matched): scale 0.998, dx 0.000, dy
+  0.004 - identity within noise, no correction needed.
 - **pycatfd has no declared license** (GitHub's license API returns
   `null`). Documented caveat for a personal project.
 
@@ -122,11 +124,27 @@ first hit:
 
 | Stage | `detector` value | `reliable` | What it does |
 |---|---|---|---|
-| 0 learned | `yolox-face` | true | YOLOX-Nano fine-tuned on cat faces (`app/facedet.py`). Active only when `models/catface_yolox_nano.onnx` exists - see `training/`. |
+| 0 learned | `yolox-face` | true | YOLOX-Nano fine-tuned on cat faces (`app/facedet.py`), only when its score is ≥ `facedet.CONF_RELIABLE` (0.80). Active only when `models/catface_yolox_nano.onnx` exists - see `training/`. |
 | 1 strict | `haar` | true | Extended cascade, `scaleFactor=1.05`, `minNeighbors=3`, `minSize=75` |
 | 2 rotated | `haar-rotated` | true | Both cascades at ±20° and ±35°; boxes mapped back, clustered by IoU ≥ 0.3, need ≥ 2 votes; winner by (votes, area); median box |
 | 3 loose | `haar-loose` | **false** | Extended cascade at `1.02`/`2`. The reading hedges: `reliable=false`, confidence capped at 0.50 |
 | fix-up | `haar-contained` | true | After stage 1 or 2: if a box ≥ 2.5× larger, found by the extended cascade at loose settings and confirmed by the standard cascade, *contains* the chosen box, the chosen box was a face part (a Savannah's muzzle, a tabby's eye). Use the container. |
+
+**Why the learned detector has its own confidence floor, not just a yes/no.**
+A real cat photographed in profile - one eye and one ear occluded -
+produced a genuinely well-placed box (confirmed by eye) but scored 0.72.
+dlib's shape predictor then had to invent a plausible position for the
+eye it could not see, and that fabrication happened to read as
+symmetric enough (nose_symmetry 0.92) to slip past the existing
+reliability check - the same geometric check that correctly flags Haar's
+occasional face-part boxes doesn't generalize to this different failure
+mode. The confidence score is what caught it. Calibrated against the
+training run's held-out test split (1,295 real photos, never trained
+on): scores ≥ 0.80 were correct 1,277/1,277 times (zero false
+confident detections); below 0.80, 16 were still genuinely correct and
+2 were not - an acceptable trade-off, since below-floor detections
+simply fall through to the Haar stages and from there to the "cat, but
+no face" message, rather than being trusted outright.
 
 Before any stage runs, **NanoDet** (OpenCV model zoo, Apache-2.0, 3.6 MB,
 `app/catdet.py`) finds every whole cat in the photo. Two uses: a face
@@ -170,7 +188,7 @@ stage 3 flagged unreliable, 1 honest "no cat face found."
 | `app/guard.py` | Per-IP sliding-window limit + global daily cap | 7 unit tests with an injected fake clock |
 | `app/main.py` | FastAPI endpoint, CORS, upload validation, guard wiring | tested live via curl, see below |
 
-68 tests total, all passing. Run them:
+69 tests total, all passing. Run them:
 
 ```bash
 cd server

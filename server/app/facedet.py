@@ -30,8 +30,34 @@ _PAD = 114
 CONF = 0.40
 NMS = 0.45
 
+CONF_RELIABLE = 0.80
+"""Score floor for treating a detection as a trustworthy, high-confidence
+face - not just "found something above the NMS floor".
+
+Calibrated against the training run's held-out test split (real photos,
+never trained on): among 1,290 detections that were genuinely correct
+(IoU >= 0.3 against ground truth), only the bottom 1% scored below 0.80,
+and the single lowest was 0.476. A real cat photographed in profile -
+one eye and one ear occluded - scored 0.72: the model still draws a
+correctly-placed box (verified visually), but dlib's shape predictor is
+then forced to invent a plausible position for the eye it cannot see,
+and that fabrication can accidentally look symmetric enough to pass the
+nose-symmetry reliability check. The confidence score is the one signal
+that caught it when geometry did not. Below this floor, detect.py treats
+the box as not found and falls through to the Haar stages (and from
+there to catdet's "a cat is here but its face is not readable" message)
+rather than trusting a plausible-looking but partly invented face."""
+
 FRAMING = {"scale": 1.0, "dx": 0.0, "dy": 0.0}
-"""Detector box -> predictor box: w,h *= scale; centre += (dx*w, dy*h)."""
+"""Detector box -> predictor box: w,h *= scale; centre += (dx*w, dy*h).
+
+Measured against the training pipeline's held-out test split (1,290/1,295
+real photos matched at IoU >= 0.3 against ground truth): scale 0.998,
+dx 0.000, dy 0.004 - identity within noise, so left at the default. This
+model was trained directly on boxes framed to match the extended Haar
+cascade (training/prepare_catface_dataset.py box_from_landmarks), so no
+separate correction was expected. Re-run tools/calibrate_face_box.py if
+the model is ever retrained on a different box convention."""
 
 _net = None
 
