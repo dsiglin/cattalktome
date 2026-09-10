@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .pipeline import analyse_bytes
-from .detect import NoCatFaceFound
+from .detect import NoCatFaceFound, CatFoundButNoFace
 from .guard import RateGuard, GuardConfig
 
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024  # 8 MB - generous for a phone photo, small enough to reject abuse
@@ -61,8 +61,15 @@ async def analyze(request: Request, photo: UploadFile = File(...)):
 
     try:
         result = analyse_bytes(data)
+    except CatFoundButNoFace:
+        # These two `detail` strings are shown to the user as-is by the app.
+        raise HTTPException(status_code=422, detail=(
+            "I can see a cat, but not its face. I need the face turned mostly toward the camera - "
+            "a side profile or a hidden face gives me nothing to read. Try one where the cat is looking at you?"))
     except NoCatFaceFound:
-        raise HTTPException(status_code=422, detail="no cat face found in this photo")
+        raise HTTPException(status_code=422, detail=(
+            "I could not find a cat in that photo. If there is one, try a photo where its face is "
+            "bigger and turned toward the camera?"))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -168,7 +168,11 @@ async function handleFile(file: File) {
     window.clearInterval(ticker);
 
     if (!result.ok) {
-      $('error-text').textContent = ERROR_COPY[result.reason] ?? result.message;
+      // For "no cat" the server writes the user-facing sentence itself, because
+      // only it knows whether it saw a cat with an unreadable face or no cat at all.
+      $('error-text').textContent = result.reason === 'no-cat' && result.message
+        ? result.message
+        : ERROR_COPY[result.reason] ?? result.message;
       show('error');
       return;
     }

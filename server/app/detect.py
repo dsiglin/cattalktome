@@ -38,6 +38,8 @@ import cv2
 import dlib
 import numpy as np
 
+from . import catdet, facedet
+
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 
 _CASCADE_EXT_PATH = MODELS_DIR / "haarcascade_frontalcatface_extended.xml"
@@ -86,12 +88,18 @@ def _shape_predictor():
 class DetectedFace:
     box: tuple  # (x, y, w, h) in the original image
     landmarks: list  # 8 (x, y) points, pycatfd CatFaceLandmark order
-    detector: str  # "haar", "haar-rotated", "haar-contained", or "haar-loose" - which stage found it
+    detector: str  # "yolox-face", "haar", "haar-rotated", "haar-contained", or "haar-loose" - which stage found it
     reliable: bool  # False when the box came from the loose stage
 
 
 class NoCatFaceFound(Exception):
-    pass
+    """No cat face anywhere in the photo."""
+
+
+class CatFoundButNoFace(NoCatFaceFound):
+    """A whole-cat detector sees a cat, but no stage found a readable face -
+    typically a profile, a cat facing away, or a face hidden behind
+    something. Different message for the user; same handling otherwise."""
 
 
 def _iou(a, b) -> float:
@@ -229,30 +237,52 @@ def _containing_face(gray, box):
 
 
 def detect_cat_face(bgr) -> DetectedFace:
-    """Find a cat face and its 8 landmarks in a BGR image (as loaded by cv2.imread)."""
+    """Find a cat face and its 8 landmarks in a BGR image (as loaded by cv2.imread).
+
+    Order of trust:
+      0. learned YOLOX cat-face detector, if its model file is present
+         (facedet.py) - trained on faces at every angle; skipped when absent.
+      1-3. the Haar stages above, each candidate vetoed if it sits outside
+         every whole-cat box NanoDet found (catdet.py) - that removes leaf
+         patches and people's faces without touching anything on the cat.
+      If nothing is found and NanoDet did see a cat, raise CatFoundButNoFace
+      so the app can say "I see a cat, but not its face".
+    """
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     h_full, w_full = gray.shape
     scale = min(1.0, _DETECT_MAX_SIDE / max(h_full, w_full))
     small = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1.0 else gray
+    small_bgr = cv2.resize(bgr, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1.0 else bgr
+
+    cats = catdet.find_cats(small_bgr)
 
     box, detector, reliable = None, "", False
-    for stage_fn, name, trust in (
-        (_stage_strict, "haar", True),
-        (_stage_rotated, "haar-rotated", True),
-        (_stage_loose, "haar-loose", False),
-    ):
-        box = stage_fn(small)
-        if box is not None:
-            detector, reliable = name, trust
-            break
+
+    faces = facedet.find_faces(small_bgr)
+    faces = [f for f in faces if catdet.inside_any(f.box, cats)]
+    if faces:
+        box, detector, reliable = facedet.to_predictor_framing(faces[0].box), "yolox-face", True
 
     if box is None:
-        raise NoCatFaceFound("no cat face found at any detection stage")
+        for stage_fn, name, trust in (
+            (_stage_strict, "haar", True),
+            (_stage_rotated, "haar-rotated", True),
+            (_stage_loose, "haar-loose", False),
+        ):
+            candidate = stage_fn(small)
+            if candidate is not None and catdet.inside_any(candidate, cats):
+                box, detector, reliable = candidate, name, trust
+                break
 
-    if reliable:
-        container = _containing_face(small, box)
-        if container is not None:
-            box, detector = container, "haar-contained"
+        if box is not None and reliable:
+            container = _containing_face(small, box)
+            if container is not None:
+                box, detector = container, "haar-contained"
+
+    if box is None:
+        if cats:
+            raise CatFoundButNoFace("a cat is in the photo but its face is not readable")
+        raise NoCatFaceFound("no cat face found at any detection stage")
 
     # Map the box back onto the full-resolution image.
     box = tuple(int(round(v / scale)) for v in box)

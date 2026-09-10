@@ -102,6 +102,13 @@ still lands in the fear family.
   what they mean. No emotion-tagged corpus was used for training; the
   ones that exist are small, self-labelled, and would teach the model
   the labeller's guesses.
+- **The Haar cascades are the weak link, and a replacement is in training.**
+  `training/catface_detector_colab.ipynb` fine-tunes YOLOX-Nano
+  (Apache-2.0) on the CC BY 4.0 "cat-face-data" set (8,153 images) with
+  rotation augmentation. When its ONNX file lands in `models/`, it becomes
+  stage 0 automatically; `tools/calibrate_face_box.py` then measures how
+  its boxes are framed relative to the Haar boxes the landmark predictor
+  expects.
 - **pycatfd has no declared license** (GitHub's license API returns
   `null`). Documented caveat for a personal project.
 
@@ -115,10 +122,20 @@ first hit:
 
 | Stage | `detector` value | `reliable` | What it does |
 |---|---|---|---|
+| 0 learned | `yolox-face` | true | YOLOX-Nano fine-tuned on cat faces (`app/facedet.py`). Active only when `models/catface_yolox_nano.onnx` exists - see `training/`. |
 | 1 strict | `haar` | true | Extended cascade, `scaleFactor=1.05`, `minNeighbors=3`, `minSize=75` |
 | 2 rotated | `haar-rotated` | true | Both cascades at ±20° and ±35°; boxes mapped back, clustered by IoU ≥ 0.3, need ≥ 2 votes; winner by (votes, area); median box |
 | 3 loose | `haar-loose` | **false** | Extended cascade at `1.02`/`2`. The reading hedges: `reliable=false`, confidence capped at 0.50 |
 | fix-up | `haar-contained` | true | After stage 1 or 2: if a box ≥ 2.5× larger, found by the extended cascade at loose settings and confirmed by the standard cascade, *contains* the chosen box, the chosen box was a face part (a Savannah's muzzle, a tabby's eye). Use the container. |
+
+Before any stage runs, **NanoDet** (OpenCV model zoo, Apache-2.0, 3.6 MB,
+`app/catdet.py`) finds every whole cat in the photo. Two uses: a face
+candidate whose centre lies outside every cat box is vetoed (this removed
+a leaf patch and a person's face that the strict stage had accepted), and
+if no stage finds a face while a cat is present the API returns a
+different message - "I can see a cat, but not its face" - instead of "no
+cat". Measured on the corpus: no correct reading changed; one
+loose-stage box that was probably fur became "cat, no face".
 
 Detection runs on a copy no larger than **1400 px** on its long side - the
 same size the browser app uploads. On a 1450×2576 phone photo every stage
@@ -143,7 +160,9 @@ stage 3 flagged unreliable, 1 honest "no cat face found."
 
 | Module | Responsibility | Tested how |
 |---|---|---|
-| `app/detect.py` | Downscale to 1400px → staged Haar (strict → rotated+voted → loose) → face-part fix-up → dlib shape predictor on full-res | 12 integration tests on 5 real fixtures |
+| `app/catdet.py` | NanoDet whole-cat boxes: veto off-cat face candidates; "cat but no face" message | 6 tests on real fixtures |
+| `app/facedet.py` | Learned YOLOX-Nano cat-face detector (optional model file; see `training/`) | activates when the model is present |
+| `app/detect.py` | Downscale to 1400px → learned face → staged Haar (strict → rotated+voted → loose), each gated by the cat boxes → face-part fix-up → dlib shape predictor on full-res | 12 integration tests on 5 real fixtures |
 | `app/geometry.py` | Pure math: 8 landmarks → head tilt, ear spread, muzzle ratio, nose offset/symmetry | 15 unit tests on synthetic coordinates |
 | `app/eyes.py` | Pupil dilation from the eye landmarks; declares itself unusable rather than guess | 8 unit tests on synthetic eyes |
 | `app/feelings.py` | Maps geometry + eyes → one of 7 feelings, with face-only evidence | 20 unit tests, reachability-checked, banned-word check on evidence |
@@ -151,7 +170,7 @@ stage 3 flagged unreliable, 1 honest "no cat face found."
 | `app/guard.py` | Per-IP sliding-window limit + global daily cap | 7 unit tests with an injected fake clock |
 | `app/main.py` | FastAPI endpoint, CORS, upload validation, guard wiring | tested live via curl, see below |
 
-57 tests total, all passing. Run them:
+68 tests total, all passing. Run them:
 
 ```bash
 cd server
