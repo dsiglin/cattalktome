@@ -66,6 +66,37 @@ def test_one_readable_eye_is_enough():
     assert e.pupil_dilation > 0.9
 
 
+def test_two_plausible_eyes_that_wildly_disagree_are_declared_unusable():
+    # Both discs individually pass every per-eye check (dark core, no glow)
+    # but disagree far more than any real photo in the 1,295-photo
+    # measurement did - the signature of one misplaced landmark, not a
+    # real cat. Found on a real photo where two ~10px-different boxes on
+    # the same cat put one eye landmark on the forehead.
+    img, lm, iod = face_with_eyes(eye_value=10)  # both eyes start wide/dark
+    radius = int(iod * 0.22)
+    rx, ry = int(lm.right_eye[0]), int(lm.right_eye[1])
+    # Overwrite the right eye with a light iris (150) around a small dark
+    # pupil (10) - a real dark core, so it individually passes _readable,
+    # but a far smaller one than the left eye's fully-dark disc.
+    cv2.circle(img, (rx, ry), radius, (150, 150, 150), -1)
+    cv2.circle(img, (rx, ry), max(1, radius // 3), (10, 10, 10), -1)
+    # left stays dark (wide); individually both still pass _readable
+    # (no glow, some dark core each) - only their disagreement is the tell.
+    e = eye_signals(img, lm, iod)
+    assert e.usable is False
+    assert e.pupil_dilation == 0.5
+    # the raw per-eye values are still reported, for diagnostics
+    assert e.left_raw > 0.9
+    assert e.right_raw < 0.2
+
+
+def test_two_eyes_that_mostly_agree_are_still_trusted():
+    img, lm, iod = face_with_eyes(eye_value=60)  # both moderately dark, identical
+    e = eye_signals(img, lm, iod)
+    assert e.usable is True
+    assert e.left_raw == e.right_raw
+
+
 def test_partial_pupil_reads_in_between():
     img, lm, iod = face_with_eyes(eye_value=150)
     # paint a smaller black pupil inside each light iris

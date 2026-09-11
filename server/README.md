@@ -84,7 +84,26 @@ still lands in the fear family.
   detector (see NanoDet below).
 
 - **"Content" (half-closed eyes) is not offered.** It needs eye
-  aperture, and the 8-point scheme has no eyelid points.
+  aperture, and the 8-point scheme has no eyelid points. (A 48-point
+  scheme with real eyelid points was trained and tested - see
+  `training/README.md`'s CatFLW section - but the derived eye-openness
+  signal didn't hold up on the actual photo that motivated it, so it
+  wasn't shipped.)
+- **Two individually-plausible eyes can still be a lie.** The 8-point
+  shape predictor is more sensitive to exact box-framing than any one
+  face detector's average accuracy suggests - on one real photo, a ~10px
+  difference in box size put a landmark on the forehead instead of the
+  eye, and each eye's disc still individually passed every existing
+  check (no glow, has a dark core). Measured on 1,295 held-out photos:
+  about 9% of confident detections produce two plausible-looking eyes
+  that disagree by more than 0.5 - the same rate whether the box came
+  from the current detector or its predecessor, so this is a property of
+  the landmark predictor, not of either detector. `app/eyes.py` now
+  treats that disagreement as unreadable rather than averaging or
+  guessing which eye is right (`_MAX_TRUSTED_DISAGREEMENT`) - the same
+  "refuse to answer" rule already used for a glowing eye. Padding the
+  box more generously was tried first and made the aggregate rate worse
+  (13.0% at 1.2x), not better; ruled out.
 - **Pupils respond to ambient light as well as arousal.** The pupil term
   is about the cat's eye, not the room, but a cat in a dark room has wide
   pupils for optical reasons. The app discloses this. Flash photos of
@@ -107,10 +126,13 @@ still lands in the fear family.
   the original Zhang et al. 2008 cat dataset (archive.org, cleaned via
   zylamarek/cat-dataset's MIT list) with rotation augmentation. Its ONNX
   file (`models/catface_yolox_nano.onnx`) is optional - `app/facedet.py`
-  falls back to the Haar stages when it is absent. `tools/calibrate_face_box.py`
-  measured its box framing against the held-out test split's ground
-  truth (1,290/1,295 real photos matched): scale 0.998, dx 0.000, dy
-  0.004 - identity within noise, no correction needed.
+  falls back to the Haar stages when it is absent. Trained the full 30
+  scheduled epochs (resumed safely in short bursts after an earlier
+  unattended attempt crashed the machine - see `training/README.md`).
+  `tools/calibrate_face_box.py` measured its box framing against the
+  held-out test split's ground truth (1,292/1,295 real photos matched):
+  scale 1.010, dx 0.004, dy 0.007 - identity within noise, no correction
+  needed.
 - **pycatfd has no declared license** (GitHub's license API returns
   `null`). Documented caveat for a personal project.
 
@@ -188,7 +210,7 @@ stage 3 flagged unreliable, 1 honest "no cat face found."
 | `app/guard.py` | Per-IP sliding-window limit + global daily cap | 7 unit tests with an injected fake clock |
 | `app/main.py` | FastAPI endpoint, CORS, upload validation, guard wiring | tested live via curl, see below |
 
-69 tests total, all passing. Run them:
+79 tests total, all passing. Run them:
 
 ```bash
 cd server

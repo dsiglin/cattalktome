@@ -26,6 +26,19 @@ Known confounds, handled by refusing to answer rather than guessing:
     to read as "0.00 = narrow pupils" and turned frightened cats into
     calm ones. Now an eye with no dark core is unreadable, and if neither
     eye is readable `usable` goes False.
+  - Landmark misplacement that still "looks like" an eye. Found on a real
+    photo: the shape predictor is fragile to fine box-framing details in
+    a way that isn't about which face detector is used - two very similar
+    boxes on the same photo (~10px apart) put one eye landmark on the
+    forehead and left the other correct, and each disc individually
+    passed every check above (not glowing, has a dark core) while reading
+    0.66 and 0.07. Measured on 1,295 held-out real photos across two
+    detector versions: the two eyes' raw values differ by more than 0.5
+    in ~9% of readable cases - both models, same rate, so this is a
+    property of the 8-point predictor, not of any one detector. Two
+    plausible-looking eyes that disagree this much are as unreadable as
+    one glowing eye; guessing which one is right is exactly the mistake
+    this module exists to avoid.
   - Ambient light. Pupils also dilate in dim rooms regardless of mood.
     This is a real physiological confound with no fix short of knowing
     the light level; it is disclosed rather than hidden.
@@ -49,6 +62,15 @@ a visible pupil, even a slit, had a 5th percentile of 3-66; the eyes that
 read a false "0.00 narrow" had 82-164. Such an eye is not "narrow", it is
 unreadable, and saying so is the honest answer."""
 
+_MAX_TRUSTED_DISAGREEMENT = 0.5
+"""Above this, two individually-plausible eyes are more likely one
+misplaced landmark than genuine biological asymmetry. Set from the same
+1,295-photo measurement as the docstring above: real photos' raw L/R
+difference has a 90th percentile of 0.48-0.57 across two detector
+versions, so 0.5 sits right at the edge of what a normal photo produces -
+above it, "landmark error" is at least as likely as "real asymmetry",
+and refusing to guess is the safer read."""
+
 
 @dataclass(frozen=True)
 class EyeSignals:
@@ -71,7 +93,7 @@ def _disc_dark_fraction(gray, centre, radius):
     x0, x1 = max(0, cx - radius), min(w, cx + radius)
     crop = gray[y0:y1, x0:x1]
     if crop.size == 0:
-        return float("nan"), float("nan")
+        return float("nan"), float("nan"), float("nan")
     yy, xx = np.ogrid[: crop.shape[0], : crop.shape[1]]
     mask = (yy - crop.shape[0] / 2) ** 2 + (xx - crop.shape[1] / 2) ** 2 <= (radius * _DISC_FRACTION) ** 2
     px = crop[mask]
@@ -97,6 +119,13 @@ def eye_signals(bgr, lm: Landmarks, interocular_dist: float) -> EyeSignals:
     # Use every readable eye; one good eye beats a guess from two bad ones.
     readable = [e[0] for e in (left, right) if _readable(*e)]
     if not readable:
+        return EyeSignals(pupil_dilation=0.5, usable=False, left_raw=left[0], right_raw=right[0])
+
+    # Two eyes that each individually look fine but wildly disagree with
+    # each other are more likely a misplaced landmark than a real cat - see
+    # _MAX_TRUSTED_DISAGREEMENT. A single readable eye has nothing to
+    # disagree with, so this only applies when both passed the check above.
+    if len(readable) == 2 and abs(readable[0] - readable[1]) > _MAX_TRUSTED_DISAGREEMENT:
         return EyeSignals(pupil_dilation=0.5, usable=False, left_raw=left[0], right_raw=right[0])
 
     return EyeSignals(
