@@ -60,6 +60,57 @@ val AP50 0.892, rotated-val AP50 0.789, test AP50 0.892.
 `profile_train.py` times each phase of an iteration; `train_catface.py
 --bench-loader` measures the loader and the bare GPU step.
 
+### Resuming (`--resume --stop-at N`), and finishing the run safely
+
+The first attempt at this crashed the machine at epoch 14/30 (see the
+session log - a kernel panic from ~50 minutes of sustained MPS load
+wedging WindowServer). `train_catface.py --resume` continues from
+`runs/catface/last.pth` instead of the COCO checkpoint, restarting the
+optimizer and EMA fresh from those weights (a small, standard
+perturbation for a warm start - not a full-fidelity continuation, since
+optimizer momentum isn't checkpointed). `--stop-at N` bounds a single
+invocation to epoch N of the full schedule, so a run can be a short,
+watched burst instead of the whole thing unattended.
+
+The remaining 17 epochs were finished this way in three checked-in-on
+bursts (3 + 7 + 7 epochs, 8-20 min each), watching system load and
+`pmset -g therm` between bursts rather than leaving it running. No
+GPU-load problems this time. Final numbers, all seven epochs 24-30 each
+scoring AP50 1.000, with the strict AP metric (box precision) climbing
+to 0.909-0.911 in the mosaic-off tail (epochs 26-30) - a real,
+measured, epoch-13-to-epoch-30 improvement:
+
+| | epoch 13 (deployed) | epoch 30 (completed) |
+|---|---|---|
+| val AP / AP50 | 0.871 / 1.000 | 0.909 / 1.000 |
+| val_rot AP / AP50 | 0.836 / 0.990 | 0.890 / 0.990 |
+| test AP / AP50 | 0.871 / 0.990 | 0.908 / 0.990 |
+
+**Not deployed anyway.** A raw-detector-metric improvement doesn't mean
+the end-to-end pipeline got better, so the same real-photo check that
+caught the profile-photo confidence bug (see server/README.md) was run
+again before shipping - and it caught something else. On the
+windowsill-tabby fixture (an extreme close-up, cat looking straight up),
+the epoch-30 model's tighter box (box-framing recalibration confirmed it
+was still identity within noise on average: scale 1.010, dx 0.004, dy
+0.007 across 1,292 test-split photos) was enough to shift the
+*unretrained* 8-point dlib shape predictor's placement on this one
+photo: its right-eye landmark landed on the forehead, not the eye
+(verified with a wide crop - `/tmp/right_eye_wide.jpg` in the session
+log), because the shape predictor is more sensitive to exact box framing
+on a tight, extreme-angle crop than the average-case calibration
+captured. That turned a correct "wide pupils, aroused" reading into a
+wrong "one eye 0.66, one eye 0.07" one. The box detector got
+measurably better; the pipeline it feeds did not, on the one photo that
+mattered most (the user's own cat).
+
+`server/models/catface_yolox_nano.onnx` stays on the epoch-13 checkpoint.
+The epoch-30 weights (`runs/catface/best.pth`, `catface_yolox_nano.onnx`)
+are kept as a real, working artifact for whoever picks this up next - the
+real fix is probably re-training pycatfd's 8-point predictor with wider
+box-jitter augmentation so it stops being this sensitive to exactly how
+tight the incoming box is, rather than reverting the better detector.
+
 ## Unattended run
 
 `run_pipeline.sh` does verify → prepare → train → evaluate → export, logging to

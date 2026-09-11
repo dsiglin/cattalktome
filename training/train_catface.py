@@ -201,26 +201,41 @@ def train(args):
     RUNS.mkdir(parents=True, exist_ok=True)
     model = exp.get_model().to(device)
 
-    pre = HERE / "yolox_nano.pth"
-    if not pre.exists():
-        import subprocess
-        print("downloading COCO-pretrained yolox_nano.pth")
-        subprocess.run(["curl", "-sL", "-o", str(pre), PRETRAINED_URL], check=True)
-    ckpt = torch.load(pre, map_location="cpu", weights_only=False)
-    model = load_ckpt(model, ckpt["model"])  # skips the 80-class head tensors that no longer match
+    start_epoch, best_ap50, log = 0, 0.0, []
+    if args.resume:
+        ckpt_path = RUNS / "last.pth"
+        assert ckpt_path.exists(), f"--resume needs {ckpt_path} - nothing to resume from"
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        model.load_state_dict(ckpt["model"])
+        start_epoch = ckpt["epoch"]
+        if (RUNS / "log.json").exists():
+            log = json.load(open(RUNS / "log.json"))
+            best_ap50 = max((row["ap50"] for row in log), default=0.0)
+        print(f"resuming from epoch {start_epoch} (val AP50 was {ckpt.get('ap50', 0):.3f}); "
+              f"optimizer momentum and EMA both restart fresh from these weights - a small, "
+              f"standard perturbation for a warm-started resume, not a full-fidelity continuation")
+    else:
+        pre = HERE / "yolox_nano.pth"
+        if not pre.exists():
+            import subprocess
+            print("downloading COCO-pretrained yolox_nano.pth")
+            subprocess.run(["curl", "-sL", "-o", str(pre), PRETRAINED_URL], check=True)
+        ckpt = torch.load(pre, map_location="cpu", weights_only=False)
+        model = load_ckpt(model, ckpt["model"])  # skips the 80-class head tensors that no longer match
 
-    loader = exp.get_data_loader(args.batch, is_distributed=False, no_aug=False)
+    loader = exp.get_data_loader(args.batch, is_distributed=False, no_aug=(start_epoch >= args.epochs - exp.no_aug_epochs))
     iters_per_epoch = len(loader)
     optimizer = exp.get_optimizer(args.batch)
     scheduler = exp.get_lr_scheduler(exp.basic_lr_per_img * args.batch, iters_per_epoch)
     ema = ModelEMA(model, 0.9998)
     ema.updates = 0
 
-    print(f"device={device} epochs={args.epochs} batch={args.batch} iters/epoch={iters_per_epoch} input={exp.input_size}")
-    best_ap50, log = 0.0, []
-    it_total = 0
+    stop_at = min(args.stop_at, args.epochs)
+    print(f"device={device} epochs={args.epochs} (this run: {start_epoch}->{stop_at}) "
+          f"batch={args.batch} iters/epoch={iters_per_epoch} input={exp.input_size}")
+    it_total = start_epoch * iters_per_epoch
     t_start = time.time()
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, stop_at):
         if epoch == args.epochs - exp.no_aug_epochs:
             print("closing mosaic and enabling L1 loss for the final epochs")
             loader.close_mosaic()
@@ -259,7 +274,8 @@ def train(args):
             best_ap50 = ap50
             torch.save({"model": ema.ema.state_dict(), "epoch": epoch + 1, "ap50": ap50}, RUNS / "best.pth")
         json.dump(log, open(RUNS / "log.json", "w"), indent=1)
-    print(f"done in {(time.time() - t_start) / 60:.0f} min; best val AP50 {best_ap50:.3f}")
+    status = "ALL DONE" if stop_at >= args.epochs else f"paused after epoch {stop_at}/{args.epochs} - resume with --resume --stop-at N"
+    print(f"{status}; this burst took {(time.time() - t_start) / 60:.1f} min; best val AP50 so far {best_ap50:.3f}")
 
 
 def eval_only(path, args):
@@ -307,6 +323,8 @@ if __name__ == "__main__":
     ap.add_argument("--export", type=str, default=None)
     ap.add_argument("--bench-loader", action="store_true", help="measure data-loader and GPU-step throughput, then exit")
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--resume", action="store_true", help="continue from runs/catface/last.pth instead of the COCO checkpoint")
+    ap.add_argument("--stop-at", type=int, default=10**9, help="stop after this many completed epochs (of --epochs total), so a run can be a short, checked-in-on burst instead of the whole schedule at once")
     a = ap.parse_args()
     if a.bench_loader:
         bench(a)
