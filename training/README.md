@@ -73,6 +73,90 @@ once via a one-shot LaunchAgent (`~/Library/LaunchAgents/com.cattalktome.train-c
 Roboflow-hosted copy of the same data (CC BY 4.0, needs a Roboflow API key).
 Kept as a fallback; the local pipeline above needs no accounts.
 
+## 48-point landmarks (eye aperture, whisker cues) - CatFLW
+
+`prepare_catflw_dataset.py` + `train_catflw.py` train a **dlib shape
+predictor** (ensemble of regression trees - CPU only, no GPU/Metal
+involved, unlike the face detector above) on the CatFLW dataset
+(Martvel et al.; Kaggle, https://www.kaggle.com/datasets/georgemartvel/catflw,
+CC BY-NC 4.0, a free account needed to download - checked GitHub releases,
+Hugging Face Hub and Zenodo for an account-free mirror; none exists).
+2,079 images, 48 points each.
+
+```bash
+# after downloading catflw.zip from the Kaggle page above:
+unzip -q ~/Downloads/catflw.zip -d data/catflw_raw
+python prepare_catflw_dataset.py          # leak-free split by cat identity: 238/50/50 cats
+python train_catflw.py --smoke            # ~1 min correctness check on a small subset
+python train_catflw.py                    # full run, oversampling=300 cascade_depth=15
+python train_catflw.py --eval-only runs/catflw/catflw48.dat
+```
+
+**What the 48 points actually are** - read directly off the label files by
+rendering every point on several real cats and checking the same index
+lands on the same anatomical spot across photos, *not* assumed from the
+paper (two secondary summaries of it disagreed with each other, and with
+this data, on whether eyelid points even exist - they do):
+
+| Region | Points |
+|---|---|
+| Each eye (7-8 pts) | 1 outer corner, 1 inner corner, a 3-4-point upper eyelid cluster, 1 lower eyelid point |
+| Each whisker pad (3 pts) | left {33,42,46}, right {34,43,47} |
+| Each ear (4-5 pts) | a tip point + several base points along the pinna |
+| Nose/mouth/chin | the rest |
+
+Four points (31, 32, 35, 38) didn't resolve to a clear region visually -
+likely cheek/temple contour - and are left unused. Full mapping and the
+reasoning: `server/app/geometry48.py`.
+
+`server/app/geometry48.py` computes two new signals from these points:
+- **Eye aperture** (eyelid gap / eye width) - the standard human-face
+  "Eye Aspect Ratio" technique, applied here with real cat eyelid points
+  for what appears to be the first time (no prior art was found for cats).
+  Aims at the same thing the Feline Grimace Scale calls "orbital
+  tightening": a frightened cat's eyes open past their resting width; a
+  squinting eye narrows it.
+- **Whisker pad spread** (distance between the two pads' outer points,
+  normalised by interocular distance) - marked experimental in its own
+  docstring: these are follicle *base* points on the skin, not points
+  along the whiskers, so this may end up measuring muzzle width rather
+  than anything whisker-specific.
+
+**Trained, evaluated, and deliberately not shipped.** Training: 31.5 min,
+CPU only (dlib's ensemble-of-regression-trees, no GPU/Metal involved -
+none of the risk the face detector's training carried). Per-point NME
+(outer-canthal-normalised) on the held-out test split (305 images, cat
+identities never seen in training): mean 9.99%, median 4.46%. The eye
+points are the model's *most* accurate ones (3-7% NME); the worst are all
+ear/periphery points this project doesn't use.
+
+That raw accuracy looked promising, so the actual derived signals were
+checked against ground truth on the same held-out split
+(`validate_derived_signals.py`):
+
+| Signal | Pearson r (test / val) | MAE as % of the real range |
+|---|---|---|
+| Eye aperture | 0.65 / 0.58 | 11% / 9% |
+| Whisker pad spread | 0.50 / 0.42 | 10% / 9% |
+
+Real, better-than-chance correlations - but the deciding test was the
+actual photo that motivated this feature: a cat visibly wide-eyed and
+tense, held by its owner's child. The model's landmarks land correctly
+on it (visually verified). Its predicted eye aperture (0.565) came out
+statistically indistinguishable from a calm, lounging cat's (0.568), and
+*lower* than an alert cat's (0.635); whisker spread (0.733) likewise
+showed no separation from the calm cat's (0.715). On the one real case
+this was built for, neither signal moved the way a human's own read of
+the photo says it should.
+
+Conclusion: **not wired into any reading.** The training pipeline,
+dataset split, and geometry math are real, tested, and kept - reusable if
+a future attempt (different normalisation, more training photos, a
+different eyelid measure) does better. Shipping a signal that fails on
+its own motivating case would repeat the mistake this project already
+undid once (photometrics) and caught once already this session (the
+face-detector confidence gate) - measure first, ship only what holds up.
+
 ## Licenses
 | Thing | License | Credit |
 |---|---|---|
@@ -81,6 +165,7 @@ Kept as a fallback; the local pipeline above needs no accounts.
 | YOLOX code and COCO-pretrained `yolox_nano.pth` | Apache-2.0 | README |
 | NanoDet whole-cat model (OpenCV model zoo) | Apache-2.0 | README |
 | Roboflow "cat-face-data" (notebook path only) | CC BY 4.0 | footer + README if used |
+| CatFLW dataset (Martvel et al., via Kaggle) | CC BY-NC 4.0 - non-commercial, fine for this free app; not for a monetised one without contacting the authors | footer + README |
 
 Non-goals: no "cat emotion" dataset is used anywhere. Every one we examined
 was self-labelled with no expert review.
