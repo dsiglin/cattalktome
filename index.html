@@ -50,10 +50,25 @@
             <h2 class="verdict"><span id="verdict-emoji" aria-hidden="true"></span> <span id="verdict-label"></span></h2>
             <p class="blurb" id="verdict-blurb"></p>
 
-            <div class="meter" role="img" id="meter" aria-label="confidence">
-              <div class="meter-track"><div class="meter-fill" id="meter-fill"></div></div>
-              <p class="meter-caption" id="meter-caption"></p>
+            <div class="gauge" id="gauge" role="img" aria-label="cat energy level">
+              <svg viewBox="0 0 200 118" class="gauge-svg" aria-hidden="true">
+                <defs>
+                  <linearGradient id="gauge-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" class="gauge-stop-calm" />
+                    <stop offset="100%" class="gauge-stop-zoomy" />
+                  </linearGradient>
+                </defs>
+                <path d="M10,100 A90,90 0 0 1 190,100" class="gauge-track" />
+                <line x1="100" y1="100" x2="100" y2="22" class="gauge-needle" id="gauge-needle" />
+                <circle cx="100" cy="100" r="7" class="gauge-hub" />
+              </svg>
+              <div class="gauge-labels" aria-hidden="true">
+                <span>Calm</span>
+                <span>Zoomy</span>
+              </div>
             </div>
+            <p class="gauge-caption" id="gauge-caption"></p>
+            <p class="confidence-caption" id="confidence-caption"></p>
 
             <details class="why">
               <summary>Why I think so</summary>
@@ -88,6 +103,7 @@
 
       <footer class="footnote">
         <p>Tell your cat i said "pspspsps"</p>
+        <p class="feelings-served" id="feelings-served"></p>
         <p class="attribution">
           Bonus stickers by
           <a href="https://www.flaticon.com/free-stickers/cat" title="cat stickers" target="_blank" rel="noopener">Flaticon contributors</a>.

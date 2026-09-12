@@ -40,6 +40,37 @@ let currentLabel = 'Cat';
 let currentBlurb = '';
 let currentFeelingId = '';
 
+const FEELINGS_SERVED_KEY = 'ctm-feelings-served';
+
+/** How many readings this browser has asked for. Local only - this app
+ * keeps no account and no server-side log of who asked what, so "served"
+ * means "served to this device", not a site-wide count. */
+function getFeelingsServed(): number {
+  try {
+    const raw = window.localStorage.getItem(FEELINGS_SERVED_KEY);
+    const n = raw ? parseInt(raw, 10) : 0;
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0; // private browsing, storage disabled, etc. - a missing counter, not a broken app
+  }
+}
+
+function bumpFeelingsServed(): number {
+  const next = getFeelingsServed() + 1;
+  try {
+    window.localStorage.setItem(FEELINGS_SERVED_KEY, String(next));
+  } catch {
+    // Nothing to do - the count just will not persist this session.
+  }
+  return next;
+}
+
+function renderFeelingsServed(count: number) {
+  $('feelings-served').textContent = count === 1
+    ? '🐾 1 cat feeling served on this device'
+    : `🐾 ${count} cat feelings served on this device`;
+}
+
 function show(which: keyof typeof panels) {
   for (const [name, panel] of Object.entries(panels)) panel.hidden = name !== which;
 }
@@ -60,8 +91,43 @@ function drawPhoto(bitmap: ImageBitmap): CanvasRenderingContext2D {
   return ctx;
 }
 
+/** Pupil dark-fraction (0.20 = fully slit, 0.60 = fully wide, per real
+ * photos measured for the reader) stretched to 0..1. Mirrors
+ * server/app/feelings.py's own _arousal() so the gauge agrees with the
+ * feeling the server actually picked. */
+function arousalFromPupil(pupilDilation: number): number {
+  return Math.max(0, Math.min(1, (pupilDilation - 0.20) / 0.40));
+}
+
+function renderGauge(eyes: DeeperReading['eyes']) {
+  const arousal = eyes.usable ? arousalFromPupil(eyes.pupilDilation) : 0.5;
+  const angle = arousal * 180 - 90; // -90 = calm (left), 0 = middle, 90 = zoomy (right)
+  $('gauge-needle').setAttribute('transform', `rotate(${angle} 100 100)`);
+
+  const gauge = $('gauge');
+  gauge.classList.toggle('gauge-unsure', !eyes.usable);
+
+  let level: string;
+  let caption: string;
+  if (!eyes.usable) {
+    level = 'not sure';
+    caption = 'I could not read the pupils clearly in this photo.';
+  } else if (arousal >= 0.7) {
+    level = 'zoomy';
+    caption = 'Wide pupils - this cat is keyed up.';
+  } else if (arousal <= 0.3) {
+    level = 'calm';
+    caption = 'Narrow pupils - this cat is settled.';
+  } else {
+    level = 'in between';
+    caption = 'Pupils partway open - somewhere in between.';
+  }
+  gauge.setAttribute('aria-label', `cat energy level: ${level}`);
+  $('gauge-caption').textContent = caption;
+}
+
 function renderReading(reading: DeeperReading) {
-  const { feeling, runnerUpLabel, confidence, evidence, reliable } = reading;
+  const { feeling, runnerUpLabel, confidence, evidence, reliable, eyes } = reading;
 
   $('verdict-emoji').textContent = feeling.emoji;
   $('verdict-label').textContent = feeling.label;
@@ -78,10 +144,10 @@ function renderReading(reading: DeeperReading) {
     return li;
   }));
 
+  renderGauge(eyes);
+
   const percent = Math.round(confidence * 100);
-  $('meter-fill').style.width = `${percent}%`;
-  $('meter').setAttribute('aria-label', `confidence ${percent} percent`);
-  $('meter-caption').textContent =
+  $('confidence-caption').textContent =
     `${percent}% sure. My second guess was “${runnerUpLabel}”.`;
 
   currentLabel = `${feeling.label} ${feeling.emoji}`;
@@ -180,6 +246,7 @@ async function handleFile(file: File) {
     renderReading(result.reading);
     stampLabel(ctx, currentLabel);
     void stampBonusSticker(ctx, currentFeelingId);
+    renderFeelingsServed(bumpFeelingsServed());
     show('result');
   } catch (error) {
     window.clearInterval(ticker);
@@ -245,4 +312,5 @@ $('retry').addEventListener('click', restart);
 // Tell the truth about what the button will do on this browser.
 if (!supportsFileShare()) $('share-label').textContent = 'Save this';
 
+renderFeelingsServed(getFeelingsServed());
 show('pick');

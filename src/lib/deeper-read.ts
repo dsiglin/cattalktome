@@ -11,6 +11,15 @@ export interface DeeperReading {
   confidence: number;
   reliable: boolean;
   evidence: string[];
+  eyes: EyeReading;
+}
+
+/** The cat's own pupils, 0..1 dark fraction. See server/app/eyes.py. `usable`
+ * is false when the pupils could not be read - the gauge must show that
+ * honestly rather than guess a position. */
+export interface EyeReading {
+  pupilDilation: number;
+  usable: boolean;
 }
 
 export type DeeperReadFailureReason =
@@ -72,6 +81,10 @@ export async function requestDeeperRead(
       confidence: body.confidence,
       reliable: body.reliable,
       evidence: body.evidence,
+      eyes: {
+        pupilDilation: body.eyes?.pupil_dilation ?? 0.5,
+        usable: body.eyes?.usable ?? false,
+      },
     },
   };
 }
