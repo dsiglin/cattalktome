@@ -190,26 +190,63 @@ h1 em {
 
 .blurb { margin: 0 0 1.15rem; color: var(--cocoa-soft); }
 
-/* ------------------------------ confidence ------------------------------ */
+/* --------------------------------- gauge --------------------------------- */
 
-.meter { margin-bottom: 1.1rem; }
-
-.meter-track {
-  height: 9px;
-  border-radius: 99px;
-  background: rgba(61, 43, 28, 0.09);
-  overflow: hidden;
+.gauge {
+  max-width: 230px;
+  margin: 0 auto;
 }
 
-.meter-fill {
-  height: 100%;
-  width: 0;
-  border-radius: 99px;
-  background: linear-gradient(90deg, var(--honey), var(--terracotta));
-  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
+.gauge-svg { display: block; width: 100%; height: auto; }
+
+.gauge-stop-calm { stop-color: var(--sage); }
+.gauge-stop-zoomy { stop-color: var(--terracotta); }
+
+.gauge-track {
+  fill: none;
+  stroke: url(#gauge-gradient);
+  stroke-width: 14;
+  stroke-linecap: round;
 }
 
-.meter-caption { margin: 0.45rem 0 0; font-size: 0.86rem; color: var(--cocoa-soft); }
+.gauge-needle {
+  stroke: var(--cocoa);
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.gauge-hub { fill: var(--cocoa); }
+
+/* An unreadable reading gets an honest, muted needle - never a confident
+   guess. See src/main.ts's renderGauge() and server/app/eyes.py. */
+.gauge-unsure .gauge-needle,
+.gauge-unsure .gauge-hub { opacity: 0.45; }
+
+.gauge-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -0.5rem;
+  padding: 0 0.2rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--cocoa-soft);
+}
+
+.gauge-caption {
+  margin: 0.3rem 0 0;
+  text-align: center;
+  font-size: 0.92rem;
+  color: var(--cocoa-soft);
+}
+
+.confidence-caption {
+  margin: 0.2rem 0 1.1rem;
+  text-align: center;
+  font-size: 0.86rem;
+  color: var(--cocoa-soft);
+  opacity: 0.85;
+}
 
 /* --------------------------------- why ---------------------------------- */
 
@@ -317,6 +354,8 @@ h1 em {
   opacity: 0.8;
 }
 .footnote p { margin: 0; }
+
+.feelings-served { margin-top: 0.5rem !important; font-weight: 700; }
 
 /* ------------------------------ preferences ----------------------------- */
 

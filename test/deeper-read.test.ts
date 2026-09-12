@@ -7,6 +7,7 @@ const okBody = {
   confidence: 0.6,
   reliable: true,
   evidence: ['one', 'two'],
+  eyes: { pupil_dilation: 0.42, usable: true },
 };
 
 const fakeFetch = (status: number, body: unknown) =>
@@ -28,7 +29,15 @@ describe('requestDeeperRead', () => {
       expect(result.reading.confidence).toBe(0.6);
       expect(result.reading.reliable).toBe(true);
       expect(result.reading.evidence).toEqual(['one', 'two']);
+      expect(result.reading.eyes).toEqual({ pupilDilation: 0.42, usable: true });
     }
+  });
+
+  it('defaults eyes to unusable when the server omits them', async () => {
+    const { eyes, ...bodyWithoutEyes } = okBody;
+    const result = await requestDeeperRead(blob(), 'https://api.example', fakeFetch(200, bodyWithoutEyes));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.reading.eyes).toEqual({ pupilDilation: 0.5, usable: false });
   });
 
   it('posts the photo as multipart form data to /analyze', async () => {
